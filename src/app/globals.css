@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ivory: #FAF7F2;
+  --color-sand: #F3EDE2;
+  --color-pearl: #FFFFFF;
+  --color-gold: #B8863B;
+  --color-gold-hover: #9A6D28;
+  --color-terracotta: #B83B2B;
+  --color-aegean: #0F5257;
+  --color-slate: #182026;
+  --color-taupe: #5C646B;
+
+  --font-serif: "Cormorant Garamond", "Playfair Display", "Baskerville", "Didot", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", "Inter", "Segoe UI Variable Text", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@layer base {
+
+  html,
+  body {
+    background-color: #FAF7F2;
+    color: #182026;
+    font-family: var(--font-sans);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  /* Daylight Editorial Headings: Light, refined & luminous */
+  h1,
+  h2,
+  h3,
+  .font-editorial {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+  }
+}
+
+/* Números tabulares alinhados para tarifas e preços */
+.tabular-price {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Hide scrollbars cleanly on horizontal chip bars */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Sunlit Gold Shimmer & Subtle Luxury Effects */
+@keyframes goldShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-gold {
+  background: linear-gradient(90deg,
+      rgba(184, 134, 59, 0.06) 25%,
+      rgba(184, 134, 59, 0.16) 50%,
+      rgba(184, 134, 59, 0.06) 75%);
+  background-size: 200% 100%;
+  animation: goldShimmer 2.4s infinite linear;
+}
+
+@keyframes slowKenBurns {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.06);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-ken-burns {
+  animation: slowKenBurns 24s ease-in-out infinite;
+}

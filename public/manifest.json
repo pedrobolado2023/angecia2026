@@ -1,0 +1,11 @@
+{
+  "name": "Velluto Stays — Private Luxury Curated Stays",
+  "short_name": "Velluto Stays",
+  "description": "A arte de se hospedar no extraordinário. Curadoria privada com condições tarifárias exclusivas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0D0E11",
+  "theme_color": "#0D0E11",
+  "orientation": "portrait-primary"
+}
+
