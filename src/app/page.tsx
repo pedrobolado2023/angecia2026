@@ -2352,7 +2352,11 @@ export default function HospedeClubApp() {
                       {/* Imagem do QR Code */}
                       <div className="p-3 bg-white rounded-xl border border-[#E2D9C8] shadow-sm shrink-0 flex flex-col items-center">
                         <img
-                          src={`data:image/png;base64,${mpPixData.qrCodeBase64}`}
+                          src={
+                            mpPixData.qrCodeBase64.startsWith("data:")
+                              ? mpPixData.qrCodeBase64
+                              : `data:image/png;base64,${mpPixData.qrCodeBase64}`
+                          }
                           alt="QR Code PIX Mercado Pago"
                           className="w-36 h-36 object-contain"
                         />

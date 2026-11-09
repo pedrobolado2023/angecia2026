@@ -1,10 +1,12 @@
 /**
  * HÓSPEDE CLUB — Módulo de Integração Oficial com o Mercado Pago
  * Suporta:
- * 1. PIX Transparente (Geração de QR Code Copia e Cola + Imagem Base64)
+ * 1. PIX Transparente (Geração de QR Code Real via qrcode + Mercado Pago API)
  * 2. Cartão de Crédito em até 12x
- * 3. Fallback inteligente em modo de testes / simulação caso a chave ainda não tenha sido inserida no .env
+ * 3. Geração robusta de QR Code em formato PNG DataURL
  */
+
+import QRCode from "qrcode";
 
 export interface MercadoPagoPaymentInput {
   amount: number;
@@ -47,16 +49,30 @@ export interface MercadoPagoPaymentResult {
 export async function processMercadoPagoPayment(
   input: MercadoPagoPaymentInput
 ): Promise<MercadoPagoPaymentResult> {
-  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() || "";
+  const accessToken =
+    process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() ||
+    process.env.MP_ACCESS_TOKEN?.trim() ||
+    "";
 
-  // Se não houver token configurado, executa em Modo Sandbox / Simulação Realista
+  // Se não houver token configurado no ambiente, executa em Modo Sandbox / Simulação
   if (!accessToken) {
     const fakeId = `MP-SIM-${Date.now()}`;
     if (input.paymentMethod === "pix") {
-      const mockPixKey = `00020126580014br.gov.bcb.pix0136hospedeclub-${Math.random().toString(36).substring(2, 10)}520400005303986540${input.amount.toFixed(2)}5802BR5916HOSPEDE CLUB ME6009SAO PAULO62070503***6304`;
-      // Mini SVG de QR Code codificado em Base64 para exibição imediata
-      const sampleSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="white"/><rect x="10" y="10" width="25" height="25" fill="#0F5257"/><rect x="65" y="10" width="25" height="25" fill="#0F5257"/><rect x="10" y="65" width="25" height="25" fill="#0F5257"/><rect x="42" y="42" width="16" height="16" fill="#B8863B"/><rect x="45" y="15" width="10" height="10" fill="#182026"/><rect x="15" y="45" width="10" height="10" fill="#182026"/><rect x="75" y="45" width="10" height="10" fill="#182026"/><rect x="45" y="75" width="10" height="10" fill="#182026"/></svg>`;
-      const sampleBase64 = Buffer.from(sampleSvg).toString("base64");
+      const mockPixKey = `00020126580014br.gov.bcb.pix0136hospedeclub-${Math.random()
+        .toString(36)
+        .substring(2, 10)}520400005303986540${input.amount.toFixed(
+        2
+      )}5802BR5916HOSPEDE CLUB ME6009SAO PAULO62070503***6304`;
+
+      // Gera QR Code PNG real e escaneável a partir da chave PIX
+      const qrDataUrl = await QRCode.toDataURL(mockPixKey, {
+        margin: 1,
+        width: 260,
+        color: {
+          dark: "#0F5257",
+          light: "#FFFFFF",
+        },
+      });
 
       return {
         ok: true,
@@ -65,10 +81,10 @@ export async function processMercadoPagoPayment(
         paymentMethod: "pix",
         isSimulation: true,
         message:
-          "Modo Simulação (Para gerar QR Code real do Banco Central, adicione MERCADOPAGO_ACCESS_TOKEN no .env.local)",
+          "Modo Simulação Ativo (Para gerar cobranças reais do Banco Central, adicione MERCADOPAGO_ACCESS_TOKEN no app do Frontend no Easypanel)",
         pix: {
           qrCode: mockPixKey,
-          qrCodeBase64: sampleBase64,
+          qrCodeBase64: qrDataUrl,
           expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         },
       };
@@ -94,7 +110,9 @@ export async function processMercadoPagoPayment(
   // Chamada oficial à API REST do Mercado Pago v1/payments
   try {
     const cleanCpf = input.payer.cpf.replace(/\D/g, "");
-    const idempotencyKey = `hospede-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const idempotencyKey = `hospede-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 7)}`;
 
     if (input.paymentMethod === "pix") {
       const payload = {
@@ -133,6 +151,17 @@ export async function processMercadoPagoPayment(
       }
 
       const txData = data.point_of_interaction?.transaction_data;
+      const rawQrText = txData?.qr_code || "";
+
+      // Se o Mercado Pago não fornecer o base64 diretamente, geramos o PNG usando QRCode
+      let finalQrBase64 = txData?.qr_code_base64 || "";
+      if (!finalQrBase64 && rawQrText) {
+        finalQrBase64 = await QRCode.toDataURL(rawQrText, {
+          margin: 1,
+          width: 260,
+        });
+      }
+
       return {
         ok: true,
         paymentId: String(data.id),
@@ -140,8 +169,8 @@ export async function processMercadoPagoPayment(
         paymentMethod: "pix",
         isSimulation: false,
         pix: {
-          qrCode: txData?.qr_code || "",
-          qrCodeBase64: txData?.qr_code_base64 || "",
+          qrCode: rawQrText,
+          qrCodeBase64: finalQrBase64,
           ticketUrl: txData?.ticket_url,
           expiresAt: data.date_of_expiration,
         },
@@ -207,7 +236,8 @@ export async function processMercadoPagoPayment(
       };
     }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Falha ao conectar com Mercado Pago";
+    const msg =
+      err instanceof Error ? err.message : "Falha ao conectar com Mercado Pago";
     return {
       ok: false,
       paymentId: "",
@@ -218,4 +248,3 @@ export async function processMercadoPagoPayment(
     };
   }
 }
-
