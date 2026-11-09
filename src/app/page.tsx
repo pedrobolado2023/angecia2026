@@ -12,6 +12,7 @@ import {
   RoomCategory,
 } from "@/data/vellutoCatalog";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
+import { isValidCPF } from "@/lib/cpfValidator";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
@@ -627,8 +628,12 @@ export default function HospedeClubApp() {
       setCheckoutError("A confirmação de e-mail não confere com o e-mail digitado.");
       return;
     }
-    if (!primaryCpf.trim() || primaryCpf.replace(/\D/g, "").length < 11) {
-      setCheckoutError("Por favor, informe um CPF válido com 11 dígitos para o titular.");
+    if (!primaryCpf.trim() || !isValidCPF(primaryCpf)) {
+      setCheckoutError("O CPF do titular é inválido. Por favor, informe um CPF válido com 11 dígitos verificadores.");
+      return;
+    }
+    if (secondGuestCpf.trim() && !isValidCPF(secondGuestCpf)) {
+      setCheckoutError("O CPF do segundo adulto é inválido. Por favor, verifique os dígitos informados.");
       return;
     }
     if (!primaryWhatsapp.trim() || primaryWhatsapp.replace(/\D/g, "").length < 10) {
@@ -714,14 +719,31 @@ export default function HospedeClubApp() {
 
       if (paymentMethod === "pix" && data.mercadoPago?.pix) {
         setMpPixData(data.mercadoPago.pix);
-        setWebhookStatusText(
-          "Código PIX gerado via Mercado Pago • Pague para confirmação instantânea"
-        );
+        if (data.mercadoPago?.status === "rejected") {
+          setWebhookStatusText(
+            data.mercadoPago.message ||
+              "Chave PIX não cadastrada no Mercado Pago. Exibindo QR Code de conferência."
+          );
+        } else {
+          setWebhookStatusText(
+            "Código PIX gerado via Mercado Pago • Pague para confirmação instantânea"
+          );
+        }
+      } else if (data.mercadoPago?.status === "rejected") {
+        setWebhookStatusText(data.mercadoPago.message || "Pagamento rejeitado pelo Mercado Pago.");
       } else {
         setWebhookStatusText(
           "Pagamento aprovado pelo Mercado Pago • Reserva salva no PostgreSQL"
         );
       }
+
+      // Rola suavemente até o comprovante / QR code
+      setTimeout(() => {
+        const el = document.getElementById("booking-confirmation-section");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
 
       // Decrementa estoque local do quarto
       setHotelsCatalog((prev) =>
@@ -2400,6 +2422,21 @@ export default function HospedeClubApp() {
                         </button>
                       </div>
                     </div>
+
+                    {webhookStatusText &&
+                      (webhookStatusText.toLowerCase().includes("chave") ||
+                        webhookStatusText.toLowerCase().includes("demonstração")) && (
+                        <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                          <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-amber-950">Aviso da Conta Mercado Pago:</p>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-amber-900">
+                              Sua conta do Mercado Pago ainda não tem uma Chave Pix cadastrada.
+                              Para aceitar pagamentos bancários reais, acesse o <strong>App Mercado Pago &gt; Perfil &gt; Chaves Pix</strong> e cadastre qualquer chave (aleatória, CPF, e-mail ou celular).
+                            </p>
+                          </div>
+                        </div>
+                    )}
                   </div>
                 )}
 
@@ -2429,7 +2466,10 @@ export default function HospedeClubApp() {
 
               {/* 4. Voucher Confirmado & Status de Gravação no PostgreSQL */}
               {bookingConfirmedVoucher && (
-                <div className="p-6 rounded-2xl bg-white text-[#182026] border-2 border-[#0F5257] shadow-md space-y-4">
+                <div
+                  id="booking-confirmation-section"
+                  className="p-6 rounded-2xl bg-white text-[#182026] border-2 border-[#0F5257] shadow-md space-y-4"
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] uppercase tracking-[0.2em] text-[#0F5257] font-semibold block">
                       Voucher Oficial Emitido
