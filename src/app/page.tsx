@@ -55,6 +55,11 @@ import {
   Search,
   AlertOctagon,
   Server,
+  Copy,
+  AlertCircle,
+  Database,
+  Calendar,
+  User,
 } from "lucide-react";
 
 type ActiveScreen = "home" | "destination" | "hotel" | "checkout" | "admin";
@@ -116,6 +121,40 @@ export default function HospedeClubApp() {
 
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "card">("pix");
   const [selectedInstallments, setSelectedInstallments] = useState<number>(6);
+
+  // Titular da Reserva (1º Adulto)
+  const [primaryFirstName, setPrimaryFirstName] = useState<string>("Pedro");
+  const [primaryLastName, setPrimaryLastName] = useState<string>("Pereira");
+  const [primaryEmail, setPrimaryEmail] = useState<string>("membro@hospedeclub.com.br");
+  const [primaryEmailConfirm, setPrimaryEmailConfirm] = useState<string>("membro@hospedeclub.com.br");
+  const [primaryCountry, setPrimaryCountry] = useState<string>("Brasil");
+  const [primaryCpf, setPrimaryCpf] = useState<string>("");
+  const [primaryWhatsapp, setPrimaryWhatsapp] = useState<string>("(11) 99812-4400");
+  const [primaryBirthDate, setPrimaryBirthDate] = useState<string>("1992-06-20");
+
+  // Dados do Segundo Adulto (Acompanhante)
+  const [secondGuestFirstName, setSecondGuestFirstName] = useState<string>("");
+  const [secondGuestLastName, setSecondGuestLastName] = useState<string>("");
+  const [secondGuestCpf, setSecondGuestCpf] = useState<string>("");
+  const [secondGuestBirthDate, setSecondGuestBirthDate] = useState<string>("");
+
+  // Dados do Cartão de Crédito Mercado Pago
+  const [cardNumber, setCardNumber] = useState<string>("");
+  const [cardHolder, setCardHolder] = useState<string>("");
+  const [cardExpiry, setCardExpiry] = useState<string>("");
+  const [cardCvv, setCardCvv] = useState<string>("");
+
+  // Estado da transação Mercado Pago & PostgreSQL
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState<boolean>(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [mpPixData, setMpPixData] = useState<{
+    qrCode: string;
+    qrCodeBase64: string;
+    ticketUrl?: string;
+  } | null>(null);
+  const [mpPixCopied, setMpPixCopied] = useState<boolean>(false);
+  const [postgresSavedStatus, setPostgresSavedStatus] = useState<boolean | null>(null);
+
   const [guestFullName, setGuestFullName] = useState<string>("Pedro Pereira");
   const [guestEmail, setGuestEmail] = useState<string>("membro@hospedeclub.com.br");
   const [guestWhatsapp, setGuestWhatsapp] = useState<string>("+55 (11) 99812-4400");
@@ -504,6 +543,9 @@ export default function HospedeClubApp() {
     setSelectedRoomId(chosenRoom.id);
     setBookingConfirmedVoucher(null);
     setWebhookStatusText(null);
+    setCheckoutError(null);
+    setMpPixData(null);
+    setPostgresSavedStatus(null);
     setActiveScreen("checkout");
     setMobileMenuOpen(false);
     const pricing = calculateVellutoPricing(
@@ -543,53 +585,171 @@ export default function HospedeClubApp() {
     return (selectedHotel.cleaningFee || 0) + (selectedHotel.securityDeposit || 0);
   }, [selectedHotel]);
 
-  const handleConfirmBookingWithWebhook = () => {
-    const generatedVoucher = `VL-${Math.floor(100000 + Math.random() * 900000)}-OMNI`;
-    setWebhookStatusText("Reserva confirmada • Voucher oficial emitido para o titular");
-    setBookingConfirmedVoucher(generatedVoucher);
+  const formatCPF = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  };
 
-    // Persiste o cadastro completo do cliente e a reserva no Backend (/api/bookings -> customers_crm.json)
-    fetch("/api/bookings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        hotelId: selectedHotel.id,
-        roomId: selectedRoom.id,
-        nights: nightsCount,
-        guests: guestsCount,
-        checkInDate,
-        paymentModality: paymentMethod === "pix" ? "PIX" : "CARD",
-        installments: selectedInstallments,
-        guestName: guestFullName,
-        guestEmail,
-        guestWhatsapp,
-        cityOrigin: memberCityOrigin,
-        voucherCode: generatedVoucher,
-      }),
-    }).catch(() => {
-      // ignore background error
-    });
+  const formatPhone = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
 
-    setHotelsCatalog((prev) =>
-      prev.map((h) => {
-        if (h.id !== selectedHotel.id) return h;
-        const nextAvail = Math.max(0, h.omnibeesAvailableRooms - 1);
-        return {
-          ...h,
-          omnibeesAvailableRooms: nextAvail,
-          stopSell: nextAvail === 0,
-          scarcityLabel:
-            nextAvail === 0
-              ? "Último quarto vendido • Stop Sell"
-              : `Apenas ${nextAvail} suíte(s) restante(s) nesta tarifa`,
-          rooms: h.rooms.map((r) =>
-            r.id === selectedRoom.id
-              ? { ...r, omnibeesAvailableCount: Math.max(0, r.omnibeesAvailableCount - 1) }
-              : r
-          ),
-        };
-      })
-    );
+  const formatCardNumber = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 16);
+    return digits.replace(/(\d{4})/g, "$1 ").trim();
+  };
+
+  const formatCardExpiry = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  };
+
+  const handleConfirmBookingWithWebhook = async () => {
+    setCheckoutError(null);
+
+    // 1. Validações do Titular
+    if (!primaryFirstName.trim() || !primaryLastName.trim()) {
+      setCheckoutError("Por favor, preencha o Nome e Último Nome do titular.");
+      return;
+    }
+    if (!primaryEmail.trim()) {
+      setCheckoutError("Por favor, informe o E-mail do titular.");
+      return;
+    }
+    if (primaryEmail.trim().toLowerCase() !== primaryEmailConfirm.trim().toLowerCase()) {
+      setCheckoutError("A confirmação de e-mail não confere com o e-mail digitado.");
+      return;
+    }
+    if (!primaryCpf.trim() || primaryCpf.replace(/\D/g, "").length < 11) {
+      setCheckoutError("Por favor, informe um CPF válido com 11 dígitos para o titular.");
+      return;
+    }
+    if (!primaryWhatsapp.trim() || primaryWhatsapp.replace(/\D/g, "").length < 10) {
+      setCheckoutError("Por favor, informe o WhatsApp do titular com DDD.");
+      return;
+    }
+    if (!primaryBirthDate) {
+      setCheckoutError("Por favor, informe a Data de Nascimento do titular.");
+      return;
+    }
+
+    // 2. Validações de Cartão de Crédito
+    if (paymentMethod === "card") {
+      if (!cardNumber.trim() || cardNumber.replace(/\D/g, "").length < 13) {
+        setCheckoutError("Por favor, informe o número completo do cartão de crédito.");
+        return;
+      }
+      if (!cardHolder.trim()) {
+        setCheckoutError("Por favor, informe o nome impresso no cartão de crédito.");
+        return;
+      }
+      if (!cardExpiry.trim() || cardExpiry.replace(/\D/g, "").length < 4) {
+        setCheckoutError("Por favor, informe a validade do cartão (MM/AA).");
+        return;
+      }
+      if (!cardCvv.trim() || cardCvv.replace(/\D/g, "").length < 3) {
+        setCheckoutError("Por favor, informe o código de segurança (CVV).");
+        return;
+      }
+    }
+
+    setIsProcessingCheckout(true);
+
+    try {
+      const generatedVoucher = `HC-${Math.floor(100000 + Math.random() * 900000)}-OMNI`;
+
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hotelId: selectedHotel.id,
+          roomId: selectedRoom.id,
+          nights: nightsCount,
+          guests: guestsCount,
+          checkInDate,
+          paymentModality: paymentMethod === "pix" ? "PIX" : "CARD",
+          installments: selectedInstallments,
+
+          // Titular
+          primaryFirstName,
+          primaryLastName,
+          primaryEmail,
+          primaryEmailConfirm,
+          primaryCountry,
+          primaryCpf,
+          primaryWhatsapp,
+          primaryBirthDate,
+
+          // Segundo Adulto
+          secondGuestFirstName,
+          secondGuestLastName,
+          secondGuestCpf,
+          secondGuestBirthDate,
+
+          // Cartão de Crédito
+          cardNumber: cardNumber.replace(/\D/g, ""),
+          cardHolder,
+          cardExpiry,
+          cardCvv,
+
+          voucherCode: generatedVoucher,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao processar reserva.");
+      }
+
+      setBookingConfirmedVoucher(data.voucherCode || generatedVoucher);
+      setPostgresSavedStatus(Boolean(data.postgres?.saved));
+
+      if (paymentMethod === "pix" && data.mercadoPago?.pix) {
+        setMpPixData(data.mercadoPago.pix);
+        setWebhookStatusText(
+          "Código PIX gerado via Mercado Pago • Pague para confirmação instantânea"
+        );
+      } else {
+        setWebhookStatusText(
+          "Pagamento aprovado pelo Mercado Pago • Reserva salva no PostgreSQL"
+        );
+      }
+
+      // Decrementa estoque local do quarto
+      setHotelsCatalog((prev) =>
+        prev.map((h) => {
+          if (h.id !== selectedHotel.id) return h;
+          const nextAvail = Math.max(0, h.omnibeesAvailableRooms - 1);
+          return {
+            ...h,
+            omnibeesAvailableRooms: nextAvail,
+            stopSell: nextAvail === 0,
+            scarcityLabel:
+              nextAvail === 0
+                ? "Último quarto vendido • Stop Sell"
+                : `Apenas ${nextAvail} suíte(s) restante(s) nesta tarifa`,
+            rooms: h.rooms.map((r) =>
+              r.id === selectedRoom.id
+                ? { ...r, omnibeesAvailableCount: Math.max(0, r.omnibeesAvailableCount - 1) }
+                : r
+            ),
+          };
+        })
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao processar a reserva.";
+      setCheckoutError(msg);
+    } finally {
+      setIsProcessingCheckout(false);
+    }
   };
 
   const activeScene = HERO_SCENES[heroSceneIndex];
@@ -1756,62 +1916,273 @@ export default function HospedeClubApp() {
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <div className="lg:col-span-8 space-y-6">
-              {/* Dados do Hóspede */}
-              <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
-                <h3 className="font-editorial text-2xl font-normal text-[#182026] mb-4">
-                  1. Titular da Reserva
-                </h3>
+              {/* Alerta de Erro de Validação */}
+              {checkoutError && (
+                <div className="p-4 rounded-2xl bg-[#B83B2B]/10 border border-[#B83B2B]/30 text-xs sm:text-sm text-[#B83B2B] flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span>{checkoutError}</span>
+                </div>
+              )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* 1. Titular da Reserva */}
+              <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
+                <div className="flex items-center justify-between mb-4">
                   <div>
-                    <label className="block text-[11px] text-[#5C646B] mb-1">
-                      Nome Completo
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block">
+                      Hóspede Principal
+                    </span>
+                    <h3 className="font-editorial text-2xl font-normal text-[#182026]">
+                      1. Titular da Reserva
+                    </h3>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-[#B8863B]/10 flex items-center justify-center text-[#9A6D28]">
+                    <User className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Nome e Último Nome */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        Primeiro Nome *
+                      </label>
+                      <input
+                        type="text"
+                        value={primaryFirstName}
+                        onChange={(e) => setPrimaryFirstName(e.target.value)}
+                        placeholder="Ex: Pedro"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        Último Nome (Sobrenome) *
+                      </label>
+                      <input
+                        type="text"
+                        value={primaryLastName}
+                        onChange={(e) => setPrimaryLastName(e.target.value)}
+                        placeholder="Ex: Pereira"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* E-mail e Confirmação de E-mail */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        E-mail *
+                      </label>
+                      <input
+                        type="email"
+                        value={primaryEmail}
+                        onChange={(e) => setPrimaryEmail(e.target.value)}
+                        placeholder="seu@email.com"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        Confirmar o E-mail *
+                      </label>
+                      <input
+                        type="email"
+                        value={primaryEmailConfirm}
+                        onChange={(e) => setPrimaryEmailConfirm(e.target.value)}
+                        placeholder="Repita seu e-mail"
+                        className={`w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border text-sm text-[#182026] focus:outline-none ${
+                          primaryEmailConfirm &&
+                          primaryEmail.toLowerCase() !== primaryEmailConfirm.toLowerCase()
+                            ? "border-[#B83B2B] focus:border-[#B83B2B]"
+                            : "border-[#E2D9C8] focus:border-[#B8863B]"
+                        }`}
+                      />
+                      {primaryEmailConfirm && (
+                        <div className="mt-1">
+                          {primaryEmail.toLowerCase() === primaryEmailConfirm.toLowerCase() ? (
+                            <span className="text-[11px] text-[#0F5257] font-medium flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-[#0F5257]" />
+                              E-mails conferem
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-[#B83B2B] font-medium flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 text-[#B83B2B]" />
+                              Os e-mails informados são diferentes
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* País, CPF, WhatsApp e Data de Nascimento */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        País de Residência *
+                      </label>
+                      <select
+                        value={primaryCountry}
+                        onChange={(e) => setPrimaryCountry(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs sm:text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      >
+                        <option value="Brasil">🇧🇷 Brasil</option>
+                        <option value="Portugal">🇵🇹 Portugal</option>
+                        <option value="Estados Unidos">🇺🇸 Estados Unidos</option>
+                        <option value="Argentina">🇦🇷 Argentina</option>
+                        <option value="Uruguai">🇺🇾 Uruguai</option>
+                        <option value="Chile">🇨🇱 Chile</option>
+                        <option value="Espanha">🇪🇸 Espanha</option>
+                        <option value="Outro">🌍 Outro país</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        CPF *
+                      </label>
+                      <input
+                        type="text"
+                        value={primaryCpf}
+                        onChange={(e) => setPrimaryCpf(formatCPF(e.target.value))}
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        WhatsApp *
+                      </label>
+                      <input
+                        type="text"
+                        value={primaryWhatsapp}
+                        onChange={(e) => setPrimaryWhatsapp(formatPhone(e.target.value))}
+                        placeholder="(11) 99999-9999"
+                        maxLength={15}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        Data de Nascimento *
+                      </label>
+                      <input
+                        type="date"
+                        value={primaryBirthDate}
+                        onChange={(e) => setPrimaryBirthDate(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs sm:text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Segundo Adulto (Acompanhante) */}
+              <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block">
+                      Acompanhante
+                    </span>
+                    <h3 className="font-editorial text-2xl font-normal text-[#182026]">
+                      2. Segundo Adulto
+                    </h3>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-[#B8863B]/10 flex items-center justify-center text-[#9A6D28]">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-xs text-[#5C646B] mb-4">
+                  Obrigatório para o registro e emissão do check-in hoteleiro (Ficha Nacional de Registro de Hóspedes - FNRH).
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                      Primeiro Nome
                     </label>
                     <input
                       type="text"
-                      value={guestFullName}
-                      onChange={(e) => setGuestFullName(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026]"
+                      value={secondGuestFirstName}
+                      onChange={(e) => setSecondGuestFirstName(e.target.value)}
+                      placeholder="Ex: Maria"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-[#5C646B] mb-1">
-                      E-mail
-                    </label>
-                    <input
-                      type="email"
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-[#5C646B] mb-1">
-                      WhatsApp
+                    <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                      Último Nome
                     </label>
                     <input
                       type="text"
-                      value={guestWhatsapp}
-                      onChange={(e) => setGuestWhatsapp(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026]"
+                      value={secondGuestLastName}
+                      onChange={(e) => setSecondGuestLastName(e.target.value)}
+                      placeholder="Ex: Pereira"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                      CPF ou Documento
+                    </label>
+                    <input
+                      type="text"
+                      value={secondGuestCpf}
+                      onChange={(e) => setSecondGuestCpf(formatCPF(e.target.value))}
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                      Data de Nascimento
+                    </label>
+                    <input
+                      type="date"
+                      value={secondGuestBirthDate}
+                      onChange={(e) => setSecondGuestBirthDate(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs sm:text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Pagamento */}
+              {/* 3. Modalidade de Pagamento Mercado Pago */}
               <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
-                <h3 className="font-editorial text-2xl font-normal text-[#182026] mb-4">
-                  2. Modalidade de Pagamento
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#0F5257] font-semibold block">
+                      Checkout Transparente Seguro
+                    </span>
+                    <h3 className="font-editorial text-2xl font-normal text-[#182026]">
+                      3. Pagamento via Mercado Pago
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#009EE3]/10 text-[#009EE3] font-semibold flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Mercado Pago
+                    </span>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {/* Opção PIX */}
                   <div
-                    onClick={() => setPaymentMethod("pix")}
+                    onClick={() => {
+                      setPaymentMethod("pix");
+                      setMpPixData(null);
+                    }}
                     className={`p-5 rounded-xl border-2 transition cursor-pointer ${
                       paymentMethod === "pix"
-                        ? "bg-[#FAF7F2] text-[#182026] border-[#B8863B] shadow-xs"
-                        : "bg-white text-[#5C646B] border-[#E5DEC9]"
+                        ? "bg-[#FAF7F2] text-[#182026] border-[#0F5257] shadow-xs"
+                        : "bg-white text-[#5C646B] border-[#E5DEC9] hover:border-[#D8CBB8]"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -1819,8 +2190,8 @@ export default function HospedeClubApp() {
                         <QrCode className="w-4 h-4 text-[#0F5257]" />
                         <span>PIX Instantâneo</span>
                       </span>
-                      <span className="text-[10px] uppercase tracking-wider text-[#0F5257] font-medium">
-                        Menor Tarifa + 3% Cashback
+                      <span className="text-[10px] uppercase tracking-wider text-[#0F5257] font-semibold bg-[#0F5257]/10 px-2 py-0.5 rounded-full">
+                        +3% Cashback
                       </span>
                     </div>
                     <p className="text-2xl font-semibold text-[#0F5257] mt-1 tabular-price">
@@ -1829,20 +2200,30 @@ export default function HospedeClubApp() {
                           villaExtraFeesTotal
                       )}
                     </p>
+                    <span className="text-[11px] text-[#5C646B] block mt-1">
+                      Aprovação em segundos com QR Code dinâmico
+                    </span>
                   </div>
 
+                  {/* Opção Cartão de Crédito */}
                   <div
-                    onClick={() => setPaymentMethod("card")}
+                    onClick={() => {
+                      setPaymentMethod("card");
+                      setMpPixData(null);
+                    }}
                     className={`p-5 rounded-xl border-2 transition cursor-pointer ${
                       paymentMethod === "card"
                         ? "bg-[#FAF7F2] text-[#182026] border-[#B8863B] shadow-xs"
-                        : "bg-white text-[#5C646B] border-[#E5DEC9]"
+                        : "bg-white text-[#5C646B] border-[#E5DEC9] hover:border-[#D8CBB8]"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="inline-flex items-center gap-2 text-sm font-medium text-[#182026]">
                         <CreditCard className="w-4 h-4 text-[#B8863B]" />
                         <span>Cartão em até 12x</span>
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-[#9A6D28] font-medium bg-[#B8863B]/10 px-2 py-0.5 rounded-full">
+                        Até 12 parcelas
                       </span>
                     </div>
                     <p className="text-2xl font-semibold text-[#182026] mt-1 tabular-price">
@@ -1855,63 +2236,241 @@ export default function HospedeClubApp() {
                           selectedInstallments
                       )}
                     </p>
+                    <span className="text-[11px] text-[#5C646B] block mt-1">
+                      Total: {formatBRL(
+                        activeRoomPricing.creditCard.installments[selectedInstallments - 1]
+                          .totalCharged * nightsCount + villaExtraFeesTotal
+                      )}
+                    </span>
                   </div>
                 </div>
 
+                {/* Campos Específicos para Cartão de Crédito */}
                 {paymentMethod === "card" && (
-                  <div className="mb-5">
-                    <select
-                      value={selectedInstallments}
-                      onChange={(e) => setSelectedInstallments(Number(e.target.value))}
-                      className="w-full p-3 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs sm:text-sm text-[#182026]"
-                    >
-                      {activeRoomPricing.creditCard.installments.map((inst) => {
-                        const totalWithNights =
-                          inst.totalCharged * nightsCount + villaExtraFeesTotal;
-                        const perInstallment = totalWithNights / inst.installments;
-                        return (
-                          <option key={inst.installments} value={inst.installments}>
-                            {inst.installments}x de {formatBRLCents(perInstallment)} — Total:{" "}
-                            {formatBRLCents(totalWithNights)}
-                          </option>
-                        );
-                      })}
-                    </select>
+                  <div className="p-4 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] mb-6 space-y-3.5">
+                    <span className="text-[10px] uppercase tracking-wider text-[#9A6D28] font-semibold block">
+                      Dados do Cartão de Crédito
+                    </span>
+
+                    {/* Seletor de Parcelamento */}
+                    <div>
+                      <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                        Número de Parcelas *
+                      </label>
+                      <select
+                        value={selectedInstallments}
+                        onChange={(e) => setSelectedInstallments(Number(e.target.value))}
+                        className="w-full p-2.5 rounded-xl bg-white border border-[#E2D9C8] text-xs sm:text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                      >
+                        {activeRoomPricing.creditCard.installments.map((inst) => {
+                          const totalWithNights =
+                            inst.totalCharged * nightsCount + villaExtraFeesTotal;
+                          const perInstallment = totalWithNights / inst.installments;
+                          return (
+                            <option key={inst.installments} value={inst.installments}>
+                              {inst.installments}x de {formatBRLCents(perInstallment)} — Total:{" "}
+                              {formatBRLCents(totalWithNights)}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                          Número do Cartão *
+                        </label>
+                        <input
+                          type="text"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                          placeholder="0000 0000 0000 0000"
+                          maxLength={19}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                          Nome impresso no Cartão *
+                        </label>
+                        <input
+                          type="text"
+                          value={cardHolder}
+                          onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+                          placeholder="COMO IMPRESSO NO CARTÃO"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#E2D9C8] text-sm text-[#182026] uppercase focus:outline-none focus:border-[#B8863B]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                          Validade (MM/AA) *
+                        </label>
+                        <input
+                          type="text"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(formatCardExpiry(e.target.value))}
+                          placeholder="12/29"
+                          maxLength={5}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[#5C646B] mb-1 font-medium">
+                          Código CVV *
+                        </label>
+                        <input
+                          type="password"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                          placeholder="123"
+                          maxLength={4}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#E2D9C8] text-sm text-[#182026] focus:outline-none focus:border-[#B8863B]"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 
+                {/* Box de Exibição do QR Code PIX Mercado Pago */}
+                {paymentMethod === "pix" && mpPixData && (
+                  <div className="p-5 rounded-2xl bg-[#0F5257]/5 border-2 border-[#0F5257] mb-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0F5257] uppercase tracking-wider">
+                        <QrCode className="w-4 h-4" />
+                        PIX Gerado com Sucesso via Mercado Pago
+                      </span>
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#0F5257] text-white font-medium">
+                        Expira em 30 min
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-6 pt-2">
+                      {/* Imagem do QR Code */}
+                      <div className="p-3 bg-white rounded-xl border border-[#E2D9C8] shadow-sm shrink-0 flex flex-col items-center">
+                        <img
+                          src={`data:image/png;base64,${mpPixData.qrCodeBase64}`}
+                          alt="QR Code PIX Mercado Pago"
+                          className="w-36 h-36 object-contain"
+                        />
+                        <span className="text-[10px] text-[#5C646B] mt-1.5">
+                          Aponte a câmera do banco
+                        </span>
+                      </div>
+
+                      {/* Código Copia e Cola */}
+                      <div className="flex-1 w-full space-y-2">
+                        <label className="block text-[11px] text-[#182026] font-medium">
+                          Ou copie o código PIX Copia e Cola:
+                        </label>
+                        <div className="p-2.5 rounded-xl bg-white border border-[#E2D9C8] text-[11px] text-[#5C646B] font-mono break-all max-h-20 overflow-y-auto">
+                          {mpPixData.qrCode}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(mpPixData.qrCode);
+                            setMpPixCopied(true);
+                            setTimeout(() => setMpPixCopied(false), 3000);
+                          }}
+                          className={`w-full py-2.5 px-4 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-center gap-2 ${
+                            mpPixCopied
+                              ? "bg-[#0F5257] text-white"
+                              : "bg-[#0F5257]/10 text-[#0F5257] hover:bg-[#0F5257] hover:text-white"
+                          }`}
+                        >
+                          {mpPixCopied ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Código PIX Copiado com Sucesso!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copiar Código PIX Copia e Cola</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Botão de Fechar Reserva */}
                 <button
                   onClick={handleConfirmBookingWithWebhook}
-                  className="w-full py-3.5 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                  disabled={isProcessingCheckout}
+                  className="w-full py-4 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] shadow-md transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Confirmar Reserva Exclusiva ({nightsCount} Noites)</span>
+                  {isProcessingCheckout ? (
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Processando no Mercado Pago & Gravando no PostgreSQL...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>
+                        {paymentMethod === "pix"
+                          ? `Gerar PIX Mercado Pago & Fechar Reserva (${nightsCount} Noites)`
+                          : `Pagar com Cartão & Fechar Reserva (${nightsCount} Noites)`}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
 
+              {/* 4. Voucher Confirmado & Status de Gravação no PostgreSQL */}
               {bookingConfirmedVoucher && (
-                <div className="p-6 rounded-2xl bg-white text-[#182026] border-2 border-[#0F5257] shadow-md">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-[#0F5257] font-medium block">
-                    Voucher Oficial Emitido
-                  </span>
-                  <h3 className="font-editorial text-3xl text-[#182026] font-normal mt-1">
+                <div className="p-6 rounded-2xl bg-white text-[#182026] border-2 border-[#0F5257] shadow-md space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#0F5257] font-semibold block">
+                      Voucher Oficial Emitido
+                    </span>
+                    {postgresSavedStatus && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0F5257]/10 text-[#0F5257] text-[10px] font-semibold">
+                        <Database className="w-3 h-3" />
+                        Salvo no PostgreSQL (Easypanel)
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="font-editorial text-3xl text-[#182026] font-normal">
                     {bookingConfirmedVoucher}
                   </h3>
                   {webhookStatusText && (
-                    <p className="text-xs text-[#0F5257] font-medium mt-1">{webhookStatusText}</p>
+                    <p className="text-xs text-[#0F5257] font-medium">{webhookStatusText}</p>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-3 mt-5 pt-4 border-t border-[#EAE3D5]">
+                  <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs text-[#5C646B] space-y-1">
+                    <p>
+                      <strong>Titular:</strong> {primaryFirstName} {primaryLastName} ({primaryEmail})
+                    </p>
+                    <p>
+                      <strong>CPF:</strong> {primaryCpf} • <strong>WhatsApp:</strong> {primaryWhatsapp}
+                    </p>
+                    {secondGuestFirstName && (
+                      <p>
+                        <strong>Segundo Adulto:</strong> {secondGuestFirstName} {secondGuestLastName}
+                        {secondGuestCpf ? ` (CPF: ${secondGuestCpf})` : ""}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#EAE3D5]">
                     <button
                       onClick={() => window.print()}
-                      className="px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Salvar Voucher PDF</span>
                     </button>
                     <a
                       href={`https://wa.me/?text=${encodeURIComponent(
-                        `Voucher Hóspede Club [${bookingConfirmedVoucher}] confirmado para ${selectedHotel.name}.`
+                        `Voucher Hóspede Club [${bookingConfirmedVoucher}] confirmado para ${selectedHotel.name}. Titular: ${primaryFirstName} ${primaryLastName}.`
                       )}`}
                       target="_blank"
                       rel="noreferrer"

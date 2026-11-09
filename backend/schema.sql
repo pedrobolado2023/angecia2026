@@ -75,32 +75,52 @@ CREATE TABLE IF NOT EXISTS markup_rules (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Tabela: bookings (Reservas, Conciliação Financeira e Sincronização PMS/Omnibees)
+-- 5. Tabela: bookings (Reservas, Conciliação Financeira, Mercado Pago & Omnibees)
 CREATE TABLE IF NOT EXISTS bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    voucher_code VARCHAR(40) UNIQUE NOT NULL,
-    hotel_id UUID NOT NULL REFERENCES hotels(id),
-    room_type_id UUID NOT NULL REFERENCES room_types(id),
-    member_email VARCHAR(180) NOT NULL,
-    member_name VARCHAR(160) NOT NULL,
-    member_whatsapp VARCHAR(40),
+    booking_code VARCHAR(50) UNIQUE NOT NULL,
+    voucher_code VARCHAR(50) UNIQUE NOT NULL,
+    hotel_id VARCHAR(120) NOT NULL,
+    hotel_name VARCHAR(200) NOT NULL,
+    room_id VARCHAR(120) NOT NULL,
+    room_name VARCHAR(200) NOT NULL,
     check_in DATE NOT NULL,
-    check_out DATE NOT NULL,
+    check_out DATE,
     nights_count SMALLINT NOT NULL CHECK (nights_count >= 1),
-    payment_modality VARCHAR(20) NOT NULL CHECK (payment_modality IN ('PIX', 'CREDIT_CARD')),
-    installments SMALLINT NOT NULL DEFAULT 1 CHECK (installments BETWEEN 1 AND 12),
-    -- Auditoria Financeira Segregada (Agente 02 RM & Gate 6 Villas — Sem serviços opcionais de terceiros)
-    net_room_total_brl NUMERIC(10, 2) NOT NULL CHECK (net_room_total_brl > 0),
-    bar_room_total_brl NUMERIC(10, 2) NOT NULL,
-    cleaning_fee_brl NUMERIC(10, 2) NOT NULL DEFAULT 0.00,     -- Não sofre markup de 15% (Gate 6)
-    security_deposit_brl NUMERIC(10, 2) NOT NULL DEFAULT 0.00, -- Caução segregada (Gate 6)
-    gateway_fee_brl NUMERIC(10, 2) NOT NULL,
+    guests_count SMALLINT NOT NULL DEFAULT 2,
+
+    -- Titular da Reserva (1º Adulto)
+    primary_first_name VARCHAR(100) NOT NULL,
+    primary_last_name VARCHAR(100) NOT NULL,
+    primary_email VARCHAR(180) NOT NULL,
+    primary_country VARCHAR(80) NOT NULL DEFAULT 'Brasil',
+    primary_cpf VARCHAR(20) NOT NULL,
+    primary_whatsapp VARCHAR(40) NOT NULL,
+    primary_birth_date DATE,
+
+    -- Segundo Adulto (Acompanhante)
+    second_guest_first_name VARCHAR(100),
+    second_guest_last_name VARCHAR(100),
+    second_guest_cpf VARCHAR(20),
+    second_guest_birth_date DATE,
+
+    -- Auditoria Financeira
     total_charged_brl NUMERIC(10, 2) NOT NULL,
-    hospede_net_profit_brl NUMERIC(10, 2) NOT NULL,
-    hospede_net_margin_percent NUMERIC(5, 2) NOT NULL CHECK (hospede_net_margin_percent >= 15.00),
-    -- Status de Webhook & Booking Push Omnibees
-    payment_status VARCHAR(30) NOT NULL DEFAULT 'PENDING_WEBHOOK' CHECK (payment_status IN ('PENDING_WEBHOOK', 'PAID_CONFIRMED', 'FAILED', 'REFUNDED')),
-    omnibees_push_status VARCHAR(30) NOT NULL DEFAULT 'AWAITING_PAYMENT' CHECK (omnibees_push_status IN ('AWAITING_PAYMENT', 'PUSHED_CONFIRMED', 'MANUAL_FALLBACK')),
+    hospede_net_profit_brl NUMERIC(10, 2) DEFAULT 0.00,
+    hospede_net_margin_percent NUMERIC(5, 2) DEFAULT 15.00,
+
+    -- Pagamento & Mercado Pago
+    payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('PIX', 'CREDIT_CARD')),
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'APPROVED', 'REJECTED', 'REFUNDED')),
+    installments SMALLINT NOT NULL DEFAULT 1 CHECK (installments BETWEEN 1 AND 12),
+    mp_payment_id VARCHAR(100),
+    mp_status VARCHAR(50),
+    mp_qr_code TEXT,
+    mp_qr_code_base64 TEXT,
+    mp_ticket_url TEXT,
+
+    -- Sincronização Omnibees
+    omnibees_push_status VARCHAR(30) NOT NULL DEFAULT 'AWAITING_PAYMENT',
     omnibees_pms_locator VARCHAR(60),
     voucher_emitted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -110,9 +130,14 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     member_code VARCHAR(30) UNIQUE NOT NULL,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
     full_name VARCHAR(180) NOT NULL,
     email VARCHAR(180) UNIQUE NOT NULL,
+    country VARCHAR(80) NOT NULL DEFAULT 'Brasil',
+    cpf VARCHAR(20),
     whatsapp VARCHAR(40) NOT NULL,
+    birth_date DATE,
     city_origin VARCHAR(120) DEFAULT 'São Paulo (SP)',
     travel_profile VARCHAR(40) DEFAULT 'Casal' CHECK (travel_profile IN ('Casal', 'Família', 'Villas & Grupos')),
     preferred_destinations TEXT[] DEFAULT '{}',

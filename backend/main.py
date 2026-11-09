@@ -55,9 +55,25 @@ def read_root():
     }
 
 
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
+
+@app.on_event("startup")
+def on_startup():
+    try:
+        from database import init_postgres_tables
+        init_postgres_tables()
+    except Exception as e:
+        pass
+
+
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "postgres_configured": bool(DATABASE_URL),
+        "mercadopago_configured": bool(MERCADOPAGO_ACCESS_TOKEN),
+    }
 
 PIX_GATEWAY_FEE = 0.008  # 0.80%
 CARD_GATEWAY_RATES: Dict[int, float] = {

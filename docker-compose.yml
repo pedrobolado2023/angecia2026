@@ -13,6 +13,9 @@ services:
     environment:
       - PORT=8000
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/hospede_club}
+      - MERCADOPAGO_ACCESS_TOKEN=${MERCADOPAGO_ACCESS_TOKEN:-}
+      - MERCADOPAGO_PUBLIC_KEY=${MERCADOPAGO_PUBLIC_KEY:-}
       - OMNIBEES_ENVIRONMENT=${OMNIBEES_ENVIRONMENT:-sandbox}
       - OMNIBEES_ENDPOINT_URL=${OMNIBEES_ENDPOINT_URL:-https://cert.api.omnibees.com/ota2014b/PullService.svc}
       - OMNIBEES_REQUESTOR_ID=${OMNIBEES_REQUESTOR_ID:-}
@@ -20,6 +23,9 @@ services:
       - OMNIBEES_API_KEY=${OMNIBEES_API_KEY:-}
       - OMNIBEES_WEBHOOK_SECRET=${OMNIBEES_WEBHOOK_SECRET:-}
       - HOSPEDE_ADMIN_PASSCODE=${HOSPEDE_ADMIN_PASSCODE:-${VANTAGGI_ADMIN_PASSCODE:-${VELLUTO_ADMIN_PASSCODE:-}}}
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -41,7 +47,37 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - BACKEND_API_URL=${BACKEND_API_URL:-http://backend:8000}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/hospede_club}
+      - MERCADOPAGO_ACCESS_TOKEN=${MERCADOPAGO_ACCESS_TOKEN:-}
+      - MERCADOPAGO_PUBLIC_KEY=${MERCADOPAGO_PUBLIC_KEY:-}
     depends_on:
       backend:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ----------------------------------------------------------------------------
+  # 3. BANCO DE DADOS (PostgreSQL 16)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: hospede-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-hospede_club}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hospede_club"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
 
