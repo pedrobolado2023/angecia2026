@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Velluto Stays | A arte de se hospedar no extraordinário",
+  title: "Hóspede Club | Hospedagens exclusivas com desconto para você",
   description:
-    "Curadoria privada de estadias de alto padrão com condições tarifárias exclusivas negociadas diretamente com a hotelaria nacional. Acesse o Velluto Private Club.",
+    "Curadoria privada de estadias e hotéis com condições tarifárias exclusivas e descontos reais para o cliente final. Faça parte do Hóspede Club e reserve com economia.",
 };
 
 export default function RootLayout({

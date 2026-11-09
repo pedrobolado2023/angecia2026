@@ -1,7 +1,7 @@
 {
-  "name": "Velluto Stays — Private Luxury Curated Stays",
-  "short_name": "Velluto Stays",
-  "description": "A arte de se hospedar no extraordinário. Curadoria privada com condições tarifárias exclusivas.",
+  "name": "Hóspede Club — Hospedagens com Desconto",
+  "short_name": "Hóspede Club",
+  "description": "Curadoria de hospedagens com condições tarifárias exclusivas e descontos reais para você.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0D0E11",

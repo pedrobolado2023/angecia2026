@@ -59,7 +59,7 @@ import {
 
 type ActiveScreen = "home" | "destination" | "hotel" | "checkout" | "admin";
 
-export default function VellutoStaysApp() {
+export default function HospedeClubApp() {
   const [hotelsCatalog, setHotelsCatalog] = useState<CuratedHotel[]>(CURATED_HOTELS);
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -117,7 +117,7 @@ export default function VellutoStaysApp() {
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "card">("pix");
   const [selectedInstallments, setSelectedInstallments] = useState<number>(6);
   const [guestFullName, setGuestFullName] = useState<string>("Pedro Pereira");
-  const [guestEmail, setGuestEmail] = useState<string>("membro@vellutostays.com.br");
+  const [guestEmail, setGuestEmail] = useState<string>("membro@hospedeclub.com.br");
   const [guestWhatsapp, setGuestWhatsapp] = useState<string>("+55 (11) 99812-4400");
   const [bookingConfirmedVoucher, setBookingConfirmedVoucher] = useState<string | null>(null);
   const [webhookStatusText, setWebhookStatusText] = useState<string | null>(null);
@@ -208,7 +208,9 @@ export default function VellutoStaysApp() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("velluto_favorites_v1");
+      const saved =
+        localStorage.getItem("hospede_favorites_v1") ||
+        localStorage.getItem("velluto_favorites_v1");
       if (saved) {
         setFavoriteIds(JSON.parse(saved));
       }
@@ -224,7 +226,7 @@ export default function VellutoStaysApp() {
         ? prev.filter((id) => id !== hotelId)
         : [...prev, hotelId];
       try {
-        localStorage.setItem("velluto_favorites_v1", JSON.stringify(next));
+        localStorage.setItem("hospede_favorites_v1", JSON.stringify(next));
       } catch {
         // ignore
       }
@@ -657,7 +659,7 @@ export default function VellutoStaysApp() {
               <span>
                 {isClubMember
                   ? `Olá, ${memberName.split(" ")[0]} (Perfil Membro)`
-                  : "Cadastrar no Velluto Club"}
+                  : "Cadastrar no Hóspede Club"}
               </span>
             </button>
           </div>
@@ -678,15 +680,15 @@ export default function VellutoStaysApp() {
           >
             <div className="w-9 h-9 rounded-full border border-[#B8863B] flex items-center justify-center bg-[#B8863B]/10 group-hover:bg-[#B8863B] group-hover:text-white transition shrink-0">
               <span className="font-editorial text-lg text-[#9A6D28] group-hover:text-white font-normal">
-                V
+                H
               </span>
             </div>
             <div className="truncate">
               <span className="font-editorial text-xl sm:text-2xl tracking-[0.22em] text-[#182026] font-normal block leading-none truncate">
-                VELLUTO STAYS
+                HÓSPEDE CLUB
               </span>
               <span className="text-[9px] uppercase tracking-[0.22em] text-[#9A6D28] block mt-1 truncate">
-                Private Curated Stays
+                Hospedagens com Desconto
               </span>
             </div>
           </button>
@@ -738,7 +740,7 @@ export default function VellutoStaysApp() {
             </button>
           </nav>
 
-          {/* Ações Direita: Favoritos + Velluto Private Club */}
+          {/* Ações Direita: Favoritos + Hóspede Club */}
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={() => {
@@ -1909,7 +1911,7 @@ export default function VellutoStaysApp() {
                     </button>
                     <a
                       href={`https://wa.me/?text=${encodeURIComponent(
-                        `Voucher Velluto Stays [${bookingConfirmedVoucher}] confirmado para ${selectedHotel.name}.`
+                        `Voucher Hóspede Club [${bookingConfirmedVoucher}] confirmado para ${selectedHotel.name}.`
                       )}`}
                       target="_blank"
                       rel="noreferrer"
@@ -2014,7 +2016,7 @@ export default function VellutoStaysApp() {
           <div className="text-[11px] flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] uppercase tracking-widest text-[#9A6D28] font-medium">
-                Velluto Private Club
+                Hóspede Club
               </span>
               <button
                 onClick={() => setShowFomoToast(false)}
@@ -2093,7 +2095,7 @@ export default function VellutoStaysApp() {
         </div>
       </nav>
 
-      {/* MODAL DE CADASTRO COMPLETO DO CLIENTE NO BACKEND (VELLUTO PRIVATE CLUB) */}
+      {/* MODAL DE CADASTRO COMPLETO DO CLIENTE NO BACKEND (HÓSPEDE CLUB) */}
       {showClubModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182026]/45 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="max-w-lg w-full bg-white text-[#182026] border border-[#DFD5C5] rounded-2xl p-6 sm:p-8 shadow-2xl my-auto">
@@ -2101,7 +2103,7 @@ export default function VellutoStaysApp() {
               Cadastro Oficial de Membro • Salvo no Servidor
             </span>
             <h3 className="font-editorial text-3xl font-normal text-[#182026]">
-              Velluto Private Club
+              Hóspede Club
             </h3>
             <p className="text-xs text-[#5C646B] mt-1.5 leading-relaxed">
               Cadastre seus dados e preferências de viagem para desbloquear tarifas secretas (até 28% OFF) e receber campanhas exclusivas de membro.
@@ -2349,10 +2351,10 @@ export default function VellutoStaysApp() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
             <span className="font-editorial text-xl tracking-[0.22em] text-[#182026] font-normal">
-              VELLUTO STAYS
+              HÓSPEDE CLUB
             </span>
             <p className="text-xs text-[#5C646B] mt-1">
-              A arte de se hospedar no extraordinário.
+              Hospedagens selecionadas com desconto exclusivo para você.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-[#5C646B]">
@@ -2360,7 +2362,7 @@ export default function VellutoStaysApp() {
               onClick={() => setShowClubModal(true)}
               className="hover:text-[#9A6D28] cursor-pointer"
             >
-              Cadastro Velluto Private Club
+              Cadastro Hóspede Club
             </button>
             <span className="text-[#182026]/15">•</span>
             <button

@@ -1,6 +1,6 @@
 if (typeof window !== "undefined") {
   throw new Error(
-    "[SEGURANÇA VELLUTO] Violação detectada: serverEnv.ts é restrito exclusivamente ao Backend."
+    "[SEGURANÇA HÓSPEDE CLUB] Violação detectada: serverEnv.ts é restrito exclusivamente ao Backend."
   );
 }
 
@@ -58,8 +58,16 @@ export function getServerOmnibeesConfig(): ServerOmnibeesConfig {
     whatsappCloudApiToken: process.env.WHATSAPP_CLOUD_API_TOKEN || "",
     whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     emailMarketingApiKey: process.env.EMAIL_MARKETING_API_KEY || "",
-    adminPasscode: process.env.VELLUTO_ADMIN_PASSCODE || "",
-    adminSessionSecret: process.env.VELLUTO_ADMIN_SESSION_SECRET || "",
+    adminPasscode:
+      process.env.HOSPEDE_ADMIN_PASSCODE ||
+      process.env.VANTAGGI_ADMIN_PASSCODE ||
+      process.env.VELLUTO_ADMIN_PASSCODE ||
+      "",
+    adminSessionSecret:
+      process.env.HOSPEDE_ADMIN_SESSION_SECRET ||
+      process.env.VANTAGGI_ADMIN_SESSION_SECRET ||
+      process.env.VELLUTO_ADMIN_SESSION_SECRET ||
+      "",
   };
 }
 
@@ -97,7 +105,7 @@ export function getMaskedEnvStatusForAdmin() {
       isSecret: true,
     },
     {
-      envName: "VELLUTO_ADMIN_PASSCODE",
+      envName: "HOSPEDE_ADMIN_PASSCODE",
       channel: "Portal Gestor (Admin)",
       rawValue: cfg.adminPasscode,
       isSecret: true,

@@ -1,10 +1,10 @@
 """
-VELLUTO STAYS — Backend Motor de Tarifas (FastAPI + Redis Cache + Conector Omnibees & Villas)
+HÓSPEDE CLUB — Backend Motor de Tarifas (FastAPI + Redis Cache + Conector Omnibees & Villas)
 Cobre:
 - Fase 2 (Passo 2.2 & 2.3): Motor de Cálculo Net + 15%, Repasse PIX/Cartão 12x e Extranet de Tarifários
 - Fase 3 (Passo 3.1 & 3.2): Conector Omnibees Pull/Push (OTA_HotelAvailRS / OTA_HotelResRQ) + Cache < 400ms
 - Fase 4 (Passo 4.3): Webhook de Pagamento com emissão de Voucher apenas após confirmação
-- Fase 6 (Passo 6.1 & 6.2): Segregação de Taxa de Limpeza e Caução em Aluguel de Temporada (Velluto Villas)
+- Fase 6 (Passo 6.1 & 6.2): Segregação de Taxa de Limpeza e Caução em Aluguel de Temporada (Hóspede Villas)
 """
 
 import os
@@ -24,10 +24,10 @@ OMNIBEES_REQUESTOR_ID = os.getenv("OMNIBEES_REQUESTOR_ID", "")
 OMNIBEES_USERNAME = os.getenv("OMNIBEES_USERNAME", "")
 OMNIBEES_API_KEY = os.getenv("OMNIBEES_API_KEY", "")
 OMNIBEES_WEBHOOK_SECRET = os.getenv("OMNIBEES_WEBHOOK_SECRET", "")
-VELLUTO_ADMIN_PASSCODE = os.getenv("VELLUTO_ADMIN_PASSCODE", "")
+HOSPEDE_ADMIN_PASSCODE = os.getenv("HOSPEDE_ADMIN_PASSCODE", os.getenv("VELLUTO_ADMIN_PASSCODE", ""))
 
 app = FastAPI(
-    title="Velluto Stays — Motor Comercial, CRM de Membros & Middleware Omnibees",
+    title="Hóspede Club — Motor Comercial, CRM de Membros & Middleware Omnibees",
     version="2.1.0",
     description="API de alta performance (< 400ms) com blindagem Zero-Leak (.env) e CRM de Membros.",
 )
@@ -49,7 +49,7 @@ app.add_middleware(
 def read_root():
     return {
         "status": "online",
-        "service": "Velluto Stays Backend API",
+        "service": "Hóspede Club Backend API",
         "version": "2.1.0",
         "docs": "/docs",
     }
@@ -200,7 +200,7 @@ def log_customer_activity(payload: CustomerActivityPayload):
     if key not in CUSTOMERS_DB:
         CUSTOMERS_DB[key] = {
             "member_code": f"MEM-{len(CUSTOMERS_DB) + 8500}",
-            "full_name": "Membro Velluto",
+            "full_name": "Membro Hóspede Club",
             "email": key,
             "whatsapp": "",
             "activities": [],
@@ -223,10 +223,10 @@ def log_customer_activity(payload: CustomerActivityPayload):
 
 @app.get("/api/v1/admin/customers")
 def list_customers_for_campaigns(x_admin_passcode: Optional[str] = Header(None)):
-    if not VELLUTO_ADMIN_PASSCODE or x_admin_passcode != VELLUTO_ADMIN_PASSCODE:
+    if not HOSPEDE_ADMIN_PASSCODE or x_admin_passcode != HOSPEDE_ADMIN_PASSCODE:
         raise HTTPException(
             status_code=401,
-            detail="Acesso negado: Chave VELLUTO_ADMIN_PASSCODE inválida ou ausente.",
+            detail="Acesso negado: Chave HOSPEDE_ADMIN_PASSCODE inválida ou ausente.",
         )
     return {
         "ok": True,

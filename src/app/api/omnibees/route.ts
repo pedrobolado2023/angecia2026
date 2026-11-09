@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   const elapsedMs = Math.round((performance.now() - startTime) * 100) / 100;
 
   return NextResponse.json({
-    provider: "Velluto Middleware Adapter (Omnibees Pull/Push + Extranet Direta)",
+    provider: "Hóspede Club Middleware Adapter (Omnibees Pull/Push + Extranet Direta)",
     responseTimeMs: elapsedMs,
     slaTargetMs: 400,
     count: enriched.length,

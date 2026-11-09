@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const serverCfg = getServerOmnibeesConfig();
-    const cookieToken = request.cookies.get("velluto_admin_session")?.value;
+    const cookieToken =
+      request.cookies.get("hospede_admin_session")?.value ||
+      request.cookies.get("velluto_admin_session")?.value;
 
     // Permite teste autenticado pelo Admin usando a variável de ambiente do próprio servidor
     // ou chamada externa da Omnibees validando o header/token contra process.env.OMNIBEES_WEBHOOK_SECRET

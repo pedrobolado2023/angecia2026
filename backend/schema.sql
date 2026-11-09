@@ -1,5 +1,5 @@
 -- ============================================================================
--- VELLUTO STAYS — Modelagem Relacional PostgreSQL / Supabase (Fase 2 - Passo 2.1)
+-- HÓSPEDE CLUB — Modelagem Relacional PostgreSQL / Supabase (Fase 2 - Passo 2.1)
 -- Auditado por: Agente 02 (RM & FinOps) & Agente 03 (Omnibees & API)
 -- ============================================================================
 
@@ -96,8 +96,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     security_deposit_brl NUMERIC(10, 2) NOT NULL DEFAULT 0.00, -- Caução segregada (Gate 6)
     gateway_fee_brl NUMERIC(10, 2) NOT NULL,
     total_charged_brl NUMERIC(10, 2) NOT NULL,
-    velluto_net_profit_brl NUMERIC(10, 2) NOT NULL,
-    velluto_net_margin_percent NUMERIC(5, 2) NOT NULL CHECK (velluto_net_margin_percent >= 15.00),
+    hospede_net_profit_brl NUMERIC(10, 2) NOT NULL,
+    hospede_net_margin_percent NUMERIC(5, 2) NOT NULL CHECK (hospede_net_margin_percent >= 15.00),
     -- Status de Webhook & Booking Push Omnibees
     payment_status VARCHAR(30) NOT NULL DEFAULT 'PENDING_WEBHOOK' CHECK (payment_status IN ('PENDING_WEBHOOK', 'PAID_CONFIRMED', 'FAILED', 'REFUNDED')),
     omnibees_push_status VARCHAR(30) NOT NULL DEFAULT 'AWAITING_PAYMENT' CHECK (omnibees_push_status IN ('AWAITING_PAYMENT', 'PUSHED_CONFIRMED', 'MANUAL_FALLBACK')),
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Tabela: customers (CRM de Membros Velluto Private Club — Salvo no Backend para Campanhas)
+-- 6. Tabela: customers (CRM de Membros Hóspede Club — Salvo no Backend para Campanhas)
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     member_code VARCHAR(30) UNIQUE NOT NULL,

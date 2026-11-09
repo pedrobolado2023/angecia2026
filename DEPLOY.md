@@ -1,4 +1,4 @@
-# 🚀 Guia de Deploy — Velluto Stays (Frontend e Backend Separados)
+# 🚀 Guia de Deploy — Hóspede Club (Frontend e Backend Separados)
 
 Este repositório possui arquitetura segregada entre **Frontend (Next.js)** e **Backend (FastAPI - Python)**. Ambos podem ser implantados de forma totalmente independente e gratuita.
 
@@ -21,7 +21,7 @@ Este repositório possui arquitetura segregada entre **Frontend (Next.js)** e **
 2. Clique em **New +** → **Web Service**.
 3. Selecione o repositório `pedrobolado2023/angecia2026`.
 4. Configure os campos:
-   - **Name:** `velluto-backend`
+   - **Name:** `hospede-backend`
    - **Root Directory:** `backend` *(MUITO IMPORTANTE)*
    - **Environment:** `Python 3`
    - **Region:** Ohio (US East) ou Oregon (US West)
@@ -36,8 +36,8 @@ Este repositório possui arquitetura segregada entre **Frontend (Next.js)** e **
    - `OMNIBEES_REQUESTOR_ID`: sua credencial
    - `OMNIBEES_USERNAME`: seu usuário
    - `OMNIBEES_API_KEY`: sua chave de API
-   - `VELLUTO_ADMIN_PASSCODE`: sua senha de gestor
-6. Clique em **Create Web Service**. Ao finalizar, o Render fornecerá a URL pública do seu backend (ex: `https://velluto-backend.onrender.com`).
+   - `HOSPEDE_ADMIN_PASSCODE`: sua senha de gestor
+6. Clique em **Create Web Service**. Ao finalizar, o Render fornecerá a URL pública do seu backend (ex: `https://hospede-backend.onrender.com`).
 
 ---
 
@@ -47,7 +47,7 @@ Este repositório possui arquitetura segregada entre **Frontend (Next.js)** e **
 3. Importe o repositório `pedrobolado2023/angecia2026`.
 4. Deixe o **Framework Preset** como `Next.js` e **Root Directory** como `./`.
 5. Em **Environment Variables**, adicione:
-   - `BACKEND_API_URL`: A URL do seu backend no Render (ex: `https://velluto-backend.onrender.com`)
+   - `BACKEND_API_URL`: A URL do seu backend no Render (ex: `https://hospede-backend.onrender.com`)
    - Demais variáveis do `.env.example` necessárias para suas integrações.
 6. Clique em **Deploy**.
 7. Pronto! A Vercel cuidará das rotas estáticas, SSR e proxy reverso para o backend FastAPI.
@@ -111,7 +111,7 @@ O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, voc�
    - `OMNIBEES_REQUESTOR_ID`: sua credencial
    - `OMNIBEES_USERNAME`: seu usuário
    - `OMNIBEES_API_KEY`: sua chave de API
-   - `VELLUTO_ADMIN_PASSCODE`: sua senha mestra
+   - `HOSPEDE_ADMIN_PASSCODE`: sua senha mestra
 6. Na aba **Domains**:
    - Adicione o domínio da sua API (ex: `api.seudominio.com`).
    - Container Port: `8000`.

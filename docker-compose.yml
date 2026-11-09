@@ -6,7 +6,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: velluto-backend
+    container_name: hospede-backend
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -19,7 +19,7 @@ services:
       - OMNIBEES_USERNAME=${OMNIBEES_USERNAME:-}
       - OMNIBEES_API_KEY=${OMNIBEES_API_KEY:-}
       - OMNIBEES_WEBHOOK_SECRET=${OMNIBEES_WEBHOOK_SECRET:-}
-      - VELLUTO_ADMIN_PASSCODE=${VELLUTO_ADMIN_PASSCODE:-}
+      - HOSPEDE_ADMIN_PASSCODE=${HOSPEDE_ADMIN_PASSCODE:-${VANTAGGI_ADMIN_PASSCODE:-${VELLUTO_ADMIN_PASSCODE:-}}}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -33,7 +33,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: velluto-frontend
+    container_name: hospede-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"

@@ -196,7 +196,7 @@ export function AdminOmnibeesPanel({
     "Maceió, Maragogi, Trancoso & Rio de Janeiro"
   );
   const [campaignMessage, setCampaignMessage] = useState<string>(
-    "Olá {nome}! Como membro do Velluto Private Club, você tem acesso antecipado ao nosso lote exclusivo com até 28% OFF abaixo da tarifa oficial + 3% de Cashback pagando no PIX."
+    "Olá {nome}! Como membro do Hóspede Club, você tem acesso antecipado ao nosso lote exclusivo com até 28% OFF abaixo da tarifa oficial + 3% de Cashback pagando no PIX."
   );
 
   // Estado do teste de conexão com /api/omnibees (lendo process.env no servidor)
@@ -406,7 +406,7 @@ export function AdminOmnibeesPanel({
     const createdHotel: CuratedHotel = {
       id: `omni-custom-${Date.now()}`,
       name: newHotelName.trim(),
-      subtitle: `Propriedade 5 estrelas homologada na curadoria Velluto Stays`,
+      subtitle: `Propriedade 5 estrelas homologada na curadoria Hóspede Club`,
       clusterId: cityObj.clusterId,
       cityId: cityObj.id,
       cityName: cityObj.shortName,
@@ -597,7 +597,7 @@ export function AdminOmnibeesPanel({
     link.href = url;
     link.setAttribute(
       "download",
-      `velluto-clientes-campanha-${new Date().toISOString().slice(0, 10)}.csv`
+      `hospede-clientes-campanha-${new Date().toISOString().slice(0, 10)}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -640,7 +640,7 @@ export function AdminOmnibeesPanel({
             As credenciais da Omnibees e a base de clientes são armazenadas
             exclusivamente no servidor. Insira a chave configurada em{" "}
             <code className="px-1.5 py-0.5 rounded bg-[#FAF7F2] border border-[#E2D9C8] text-[#182026]">
-              VELLUTO_ADMIN_PASSCODE
+              HOSPEDE_ADMIN_PASSCODE
             </code>{" "}
             para acessar.
           </p>
@@ -661,7 +661,7 @@ export function AdminOmnibeesPanel({
               <span className="text-[11px] text-[#5C646B] block mt-1.5">
                 A senha é validada no servidor a partir da variável{" "}
                 <code className="text-[#0F5257] font-medium">
-                  VELLUTO_ADMIN_PASSCODE
+                  HOSPEDE_ADMIN_PASSCODE
                 </code>{" "}
                 definida no seu arquivo <code>.env.local</code>.
               </span>
@@ -697,7 +697,7 @@ export function AdminOmnibeesPanel({
 
   const sampleAvailXml = `<?xml version="1.0" encoding="UTF-8"?>
 <OTA_HotelAvailRQ xmlns="http://www.opentravel.org/OTA/2003/05"
-  EchoToken="VELLUTO-${Date.now()}"
+  EchoToken="HOSPEDE-${Date.now()}"
   Target="${maskedEnv?.environment === "production" ? "Production" : "Test"}"
   Version="2.001"
   PrimaryLangID="pt">

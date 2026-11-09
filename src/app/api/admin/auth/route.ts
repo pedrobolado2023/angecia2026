@@ -6,8 +6,12 @@ import {
 
 export async function GET(request: NextRequest) {
   const cfg = getServerOmnibeesConfig();
-  const cookieToken = request.cookies.get("velluto_admin_session")?.value;
-  const headerToken = request.headers.get("x-velluto-admin-token");
+  const cookieToken =
+    request.cookies.get("hospede_admin_session")?.value ||
+    request.cookies.get("velluto_admin_session")?.value;
+  const headerToken =
+    request.headers.get("x-hospede-admin-token") ||
+    request.headers.get("x-velluto-admin-token");
 
   const isAuthenticated =
     Boolean(cfg.adminSessionSecret) &&
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
           ok: false,
           authenticated: false,
           error:
-            "Chave de acesso inválida. Verifique a variável VELLUTO_ADMIN_PASSCODE no .env.local do servidor.",
+            "Chave de acesso inválida. Verifique a variável HOSPEDE_ADMIN_PASSCODE no .env.local do servidor.",
         },
         { status: 401 }
       );
@@ -54,7 +58,7 @@ export async function POST(request: NextRequest) {
       maskedEnv: getMaskedEnvStatusForAdmin(),
     });
 
-    response.cookies.set("velluto_admin_session", cfg.adminSessionSecret, {
+    response.cookies.set("hospede_admin_session", cfg.adminSessionSecret, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
@@ -72,6 +76,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE() {
   const response = NextResponse.json({ ok: true, authenticated: false });
+  response.cookies.delete("hospede_admin_session");
   response.cookies.delete("velluto_admin_session");
   return response;
 }

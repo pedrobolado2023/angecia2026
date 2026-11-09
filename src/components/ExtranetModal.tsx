@@ -222,7 +222,7 @@ export function ExtranetModal({
                 </strong>
               </div>
               <div>
-                <span className="text-[#5C646B] block">Lucro Líquido Velluto (15%):</span>
+                <span className="text-[#5C646B] block">Lucro Líquido Hóspede Club (15%):</span>
                 <strong className="text-lg text-[#0F5257] font-semibold">
                   R$ {previewPricing.pix.netProfitAmount.toLocaleString("pt-BR")} (
                   {previewPricing.pix.netMarginOnNetPercent}%)

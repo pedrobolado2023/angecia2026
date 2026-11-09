@@ -1,5 +1,5 @@
 /**
- * VELLUTO STAYS — Motor Comercial de Precificação & Proteção de Margem (Seções 2 e 6)
+ * HÓSPEDE CLUB — Motor Comercial de Precificação & Proteção de Margem (Seções 2 e 6)
  *
  * Regras Inegociáveis do Agente 02 (Auditor de RM & Margem) e Agente 03 (API):
  * 1. Preço de Venda Base (Sell Rate) = Tarifa Net * (1 + Markup_0.15)
@@ -12,9 +12,9 @@
  *    - Parcelas 1x a 3x: Taxa MDR base ajustada para manter os 15% líquidos sobre o Net
  *    - Parcelas 4x a 12x: Juros de antecipação + MDR do gateway (4,69% a 8,90%) embutidos nas parcelas a partir da 4ª vez, mantendo os 15,00% de margem líquida intactos sobre a Tarifa Net
  * 5. Arbitragem de Paridade Tarifária (Rate Parity):
- *    - Visitante não logado vê a Tarifa Oficial (BAR - Best Available Rate) com o selo bloqueado do Velluto Private Club
+ *    - Visitante não logado vê a Tarifa Oficial (BAR - Best Available Rate) com o selo bloqueado do Hóspede Club
  *    - Membro logado acessa a "Tarifa Secreta de Membro" (ancoragem De / Por real)
- * 6. Gate 6 (Velluto Villas & Private Homes):
+ * 6. Gate 6 (Hóspede Villas & Private Homes):
  *    - Taxa de limpeza (cleaningFee) e Caução (securityDeposit) são separadas do cálculo do markup de 15% da diária.
  */
 
@@ -58,11 +58,11 @@ export interface PricingCalculationResult {
     baseCardPrice: number;
     installments: InstallmentOption[];
   };
-  // Modalidade 3: Paridade Tarifária (Velluto Private Club)
+  // Modalidade 3: Paridade Tarifária (Hóspede Club)
   parity: {
     isBelowBar: boolean;
     publicDisplayPrice: number; // Respeita paridade pública (BAR)
-    memberSecretPrice: number;  // Preço exclusivo logado no Velluto Private Club
+    memberSecretPrice: number;  // Preço exclusivo logado no Hóspede Club
     memberSavingsAmount: number;
     memberSavingsPercent: number;
   };
@@ -93,7 +93,7 @@ const GATEWAY_CARD_RATES: Record<number, number> = {
 
 const PIX_GATEWAY_FEE = 0.008; // 0,80% custo de transação PIX
 
-export function calculateVellutoPricing(
+export function calculateHospedePricing(
   netRateInput: number,
   barRateInput?: number,
   customMarkup: number = 0.15,
@@ -182,7 +182,7 @@ export function calculateVellutoPricing(
       cashbackNextBooking: Math.round(exactPixPrice * 0.03 * 100) / 100,
       perks: [
         "Menor tarifa garantida à vista no PIX",
-        "3% de Cashback imediato creditado no Velluto Private Club",
+        "3% de Cashback imediato creditado no Hóspede Club",
         "Confirmação prioritária via Omnibees Push em 3 segundos",
       ],
     },
@@ -205,3 +205,6 @@ export function calculateVellutoPricing(
     },
   };
 }
+
+// Alias para compatibilidade
+export const calculateVellutoPricing = calculateHospedePricing;

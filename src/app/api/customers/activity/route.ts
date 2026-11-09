@@ -22,8 +22,12 @@ export async function POST(request: NextRequest) {
     // Criação de Campanha de Membros (exclusivo Admin autenticado)
     if (activityType === "CREATE_CAMPAIGN") {
       const cfg = getServerOmnibeesConfig();
-      const cookieToken = request.cookies.get("velluto_admin_session")?.value;
-      const headerToken = request.headers.get("x-velluto-admin-token");
+      const cookieToken =
+        request.cookies.get("hospede_admin_session")?.value ||
+        request.cookies.get("velluto_admin_session")?.value;
+      const headerToken =
+        request.headers.get("x-hospede-admin-token") ||
+        request.headers.get("x-velluto-admin-token");
       if (
         !cfg.adminSessionSecret ||
         (cookieToken !== cfg.adminSessionSecret &&
@@ -36,7 +40,7 @@ export async function POST(request: NextRequest) {
       }
 
       const campaign = createCampaignBroadcast({
-        title: String(payload.title || "Campanha Exclusiva Velluto Club"),
+        title: String(payload.title || "Campanha Exclusiva Hóspede Club"),
         channel: (payload.channel as CampaignBroadcastRecord["channel"]) || "WhatsApp VIP",
         segmentFilter: String(payload.segmentFilter || "Todos os Membros Opt-in"),
         discountOffer: String(payload.discountOffer || "Até 27% OFF + 3% Cashback PIX"),

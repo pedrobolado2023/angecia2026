@@ -3,7 +3,7 @@ import path from "path";
 
 if (typeof window !== "undefined") {
   throw new Error(
-    "[SEGURANÇA VELLUTO] customerStore.ts é exclusivo do Backend (Node.js)."
+    "[SEGURANÇA HÓSPEDE CLUB] customerStore.ts é exclusivo do Backend (Node.js)."
   );
 }
 
@@ -98,7 +98,7 @@ const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
   {
     id: "MEM-8492",
     fullName: "Pedro Pereira",
-    email: "membro@vellutostays.com.br",
+    email: "membro@hospedeclub.com.br",
     whatsapp: "+55 (11) 99812-4400",
     cityOrigin: "São Paulo (SP)",
     preferredDestinations: ["Rio de Janeiro, Búzios & Angra", "Maceió & Maragogi", "Gramado & Vale dos Vinhedos"],
@@ -163,7 +163,7 @@ const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
     bookings: [
       {
         bookingId: "BK-994012",
-        voucherCode: "VL-849201-OMNI",
+        voucherCode: "HC-849201-OMNI",
         hotelId: "velluto-palace-sao-conrado",
         hotelName: "Palácio Atlântico São Conrado & Spa",
         roomName: "Suíte Deluxe Vista Mar Frontal",
@@ -433,8 +433,8 @@ export function upsertCustomerProfile(input: {
   } else {
     const newCustomer: CustomerCRMRecord = {
       id: input.id || `MEM-${Math.floor(1000 + Math.random() * 9000)}`,
-      fullName: input.fullName.trim() || "Membro Velluto",
-      email: normalizedEmail || `membro.${Date.now()}@vellutostays.com.br`,
+      fullName: input.fullName.trim() || "Membro Hóspede Club",
+      email: normalizedEmail || `membro.${Date.now()}@hospedeclub.com.br`,
       whatsapp: input.whatsapp.trim() || "+55 (11) 99999-0000",
       cityOrigin: input.cityOrigin || "São Paulo (SP)",
       preferredDestinations:
@@ -505,7 +505,7 @@ export function recordCustomerActivity(input: {
     customer = upsertCustomerProfile({
       id: input.customerId,
       fullName: input.fullName || "Visitante Membro",
-      email: input.email || "membro@vellutostays.com.br",
+      email: input.email || "membro@hospedeclub.com.br",
       whatsapp: input.whatsapp || "+55 (11) 99812-4400",
       cityOrigin: input.cityOrigin || "São Paulo (SP)",
     });

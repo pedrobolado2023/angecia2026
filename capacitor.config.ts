@@ -1,11 +1,11 @@
 /**
- * VELLUTO STAYS — Configuração Capacitor.js (iOS .ipa & Android .aab) — Fase 5
+ * HÓSPEDE CLUB — Configuração Capacitor.js (iOS .ipa & Android .aab) — Fase 5
  * Auditado pelo Agente 05 (Guardião de Segurança, Pagamentos e Mobile Stores)
  */
 
 const capacitorConfig = {
-  appId: "com.vellutostays.privateclub",
-  appName: "Velluto Stays",
+  appId: "com.hospedeclub.app",
+  appName: "Hóspede Club",
   webDir: "out",
   server: {
     androidScheme: "https",
@@ -21,8 +21,8 @@ const capacitorConfig = {
       showSpinner: false,
     },
     SignInWithApple: {
-      clientId: "com.vellutostays.privateclub.auth",
-      redirectURI: "https://vellutostays.com.br/api/auth/apple/callback",
+      clientId: "com.hospedeclub.app.auth",
+      redirectURI: "https://hospedeclub.com.br/api/auth/apple/callback",
       scopes: "email name",
     },
   },

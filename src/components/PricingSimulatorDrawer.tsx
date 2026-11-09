@@ -164,7 +164,7 @@ export function PricingSimulatorDrawer({
 
               <div className="p-4 rounded-xl bg-[#0F5257]/8 border border-[#0F5257]/30">
                 <span className="text-[10px] text-[#0F5257] font-medium uppercase tracking-[0.16em]">
-                  Lucro Líquido Velluto
+                  Lucro Líquido Hóspede Club
                 </span>
                 <p className="text-2xl font-semibold text-[#0F5257] mt-1">
                   {formatBRL(calculation.data.pix.netProfitAmount)}

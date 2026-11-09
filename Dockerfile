@@ -1,5 +1,5 @@
 # ============================================================================
-# Dockerfile do Frontend (Next.js - Velluto Stays)
+# Dockerfile do Frontend (Next.js - Hóspede Club)
 # ============================================================================
 FROM node:20-alpine AS deps
 WORKDIR /app

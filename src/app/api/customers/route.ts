@@ -8,8 +8,12 @@ import {
 
 export async function GET(request: NextRequest) {
   const cfg = getServerOmnibeesConfig();
-  const cookieToken = request.cookies.get("velluto_admin_session")?.value;
-  const headerToken = request.headers.get("x-velluto-admin-token");
+  const cookieToken =
+    request.cookies.get("hospede_admin_session")?.value ||
+    request.cookies.get("velluto_admin_session")?.value;
+  const headerToken =
+    request.headers.get("x-hospede-admin-token") ||
+    request.headers.get("x-velluto-admin-token");
 
   const isAuthenticated =
     Boolean(cfg.adminSessionSecret) &&

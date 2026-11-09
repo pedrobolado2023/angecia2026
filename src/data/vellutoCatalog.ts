@@ -668,7 +668,7 @@ export const CURATED_HOTELS: CuratedHotel[] = [
       { landmarkId: "praia-sao-conrado", landmarkName: "Zona Sul do Rio de Janeiro", distanceText: "A 2h30 pela rodovia Rio-Santos", walkOrDrive: "drive" },
     ],
     curationHighlights: [
-      "Velluto Villas: Governança dedicada e taxas operacionais transparentes",
+      "Hóspede Villas: Governança dedicada e taxas operacionais transparentes",
       "6 suítes climatizadas com vista para o mar de Angra dos Reis",
       "Piscina de borda infinita integrada à área gourmet coberta",
     ],
@@ -1144,7 +1144,7 @@ export const CURATED_HOTELS: CuratedHotel[] = [
     curationHighlights: [
       "Complexo de piscinas aquecidas e arquitetura voltada para famílias e casais",
       "Regime de Meia Pensão oficial do hotel incluso na tarifa",
-      "Condição tarifária exclusiva para membros Velluto Private Club",
+      "Condição tarifária exclusiva para membros Hóspede Club",
     ],
     rooms: [
       {
@@ -1279,7 +1279,7 @@ export const CURATED_HOTELS: CuratedHotel[] = [
     curationHighlights: [
       "Piscina aquecida debruçada sobre o mar de Jurerê Internacional",
       "Café da manhã oficial incluso no tarifário contratado",
-      "Condição secreta Velluto com 24% de economia real sobre a tarifa balcão",
+      "Condição secreta Hóspede Club com 24% de economia real sobre a tarifa balcão",
     ],
     rooms: [
       {
@@ -1315,7 +1315,7 @@ export const CURATED_HOTELS: CuratedHotel[] = [
 export const LIVE_FOMO_NOTIFICATIONS = [
   "14 pessoas estão visualizando o Reserva dos Corais em Maceió/Maragogi agora",
   "Última reserva feita há 11 minutos no Palácio Atlântico São Conrado por um membro de São Paulo (Economizou R$ 510/noite)",
-  "Membro Velluto Private Club de Brasília acabou de desbloquear Tarifa Secreta em Trancoso (-26% OFF)",
+  "Membro Hóspede Club de Brasília acabou de desbloquear Tarifa Secreta em Trancoso (-26% OFF)",
   "Apenas 2 suítes restantes com Vista Mar em São Conrado para o próximo fim de semana",
   "Membro de Goiânia garantiu +3% de Cashback pagando via PIX no Rio Quente",
 ];

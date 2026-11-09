@@ -1,5 +1,5 @@
 /**
- * VELLUTO STAYS — Suíte Oficial de Auditoria dos 6 Quality Gates (Conselho de 5 Agentes)
+ * HÓSPEDE CLUB — Suíte Oficial de Auditoria dos 6 Quality Gates (Conselho de 5 Agentes)
  * Testa os endpoints ao vivo em http://localhost:3000 e valida todas as fases (1 a 6).
  */
 
@@ -56,7 +56,7 @@ async function runFullCouncilAudit() {
       nights: 3,
       paymentModality: "PIX",
       guestName: "Membro Teste Gate 3",
-      guestEmail: "gate3@vellutostays.com.br",
+      guestEmail: "gate3@hospedeclub.com.br",
     }),
   });
   const book1Data = await book1.json();
@@ -108,7 +108,7 @@ async function runFullCouncilAudit() {
     `[GATE 4 & GATE 5 - APROVADO] Webhook inválido bloqueado (HTTP 401). Webhook autenticado emitiu Voucher ${validWebhookData.voucherCode} e sincronizou PMS (${validWebhookData.omnibeesBookingPush.pmsLocator}).`
   );
 
-  // GATE 6 (Velluto Villas): Segregação de Taxa de Limpeza e Caução do Markup de 15%
+  // GATE 6 (Hóspede Villas): Segregação de Taxa de Limpeza e Caução do Markup de 15%
   if (
     book1Data.financialAudit.cleaningFeeSegregated !== 380 ||
     book1Data.financialAudit.securityDepositSegregated !== 1200 ||
@@ -139,7 +139,7 @@ async function runFullCouncilAudit() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       fullName: "Membro Auditoria Campanha",
-      email: "campanha.vip@vellutostays.com.br",
+      email: "campanha.vip@hospedeclub.com.br",
       whatsapp: "+55 (11) 99777-8899",
       cityOrigin: "São Paulo (SP)",
       preferredDestinations: ["Maceió & Maragogi", "Gramado & Vinhedos"],
@@ -154,7 +154,7 @@ async function runFullCouncilAudit() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       customerId: regData.memberProfile?.id,
-      email: "campanha.vip@vellutostays.com.br",
+      email: "campanha.vip@hospedeclub.com.br",
       activityType: "SEARCH",
       payload: {
         query: "Maragogi",

@@ -3,7 +3,7 @@ services:
   # 1. BACKEND: FastAPI (Python 3.11+)
   # ============================================================================
   - type: web
-    name: velluto-stays-backend
+    name: hospede-club-backend
     env: python
     region: oregon
     plan: free
@@ -25,7 +25,7 @@ services:
   # 2. FRONTEND: Next.js (Node.js)
   # ============================================================================
   - type: web
-    name: velluto-stays-frontend
+    name: hospede-club-frontend
     env: node
     region: oregon
     plan: free
@@ -38,5 +38,5 @@ services:
       - key: BACKEND_API_URL
         fromService:
           type: web
-          name: velluto-stays-backend
+          name: hospede-club-backend
           property: host
