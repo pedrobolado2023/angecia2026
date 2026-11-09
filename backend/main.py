@@ -12,6 +12,7 @@ from math import ceil
 from datetime import datetime
 from typing import Dict, List, Optional
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # Credenciais lidas EXCLUSIVAMENTE de variáveis de ambiente do servidor (.env / .env.local)
@@ -30,6 +31,33 @@ app = FastAPI(
     version="2.1.0",
     description="API de alta performance (< 400ms) com blindagem Zero-Leak (.env) e CRM de Membros.",
 )
+
+# Habilita CORS para permitir requisições do Frontend Next.js (mesmo em domínios diferentes)
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "service": "Velluto Stays Backend API",
+        "version": "2.1.0",
+        "docs": "/docs",
+    }
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 PIX_GATEWAY_FEE = 0.008  # 0.80%
 CARD_GATEWAY_RATES: Dict[int, float] = {
@@ -206,5 +234,12 @@ def list_customers_for_campaigns(x_admin_passcode: Optional[str] = Header(None))
         "count": len(CUSTOMERS_DB),
         "customers": list(CUSTOMERS_DB.values()),
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
 
 

@@ -1,0 +1,42 @@
+services:
+  # ============================================================================
+  # 1. BACKEND: FastAPI (Python 3.11+)
+  # ============================================================================
+  - type: web
+    name: velluto-stays-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: OMNIBEES_ENVIRONMENT
+        value: sandbox
+      - key: OMNIBEES_ENDPOINT_URL
+        value: https://cert.api.omnibees.com/ota2014b/PullService.svc
+
+  # ============================================================================
+  # 2. FRONTEND: Next.js (Node.js)
+  # ============================================================================
+  - type: web
+    name: velluto-stays-frontend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BACKEND_API_URL
+        fromService:
+          type: web
+          name: velluto-stays-backend
+          property: host
