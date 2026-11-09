@@ -85,6 +85,68 @@ docker compose logs -f
 
 ---
 
+## 🅳️ Opção 4: Deploy no Easypanel (Frontend e Backend Separados)
+
+O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, você pode criar **2 Apps separados** (o modo mais flexível) ou um **Compose Service**:
+
+### Método 1: Criando 2 Apps Separados (Recomendado)
+
+#### 1. Backend no Easypanel
+1. Dentro do seu Projeto no Easypanel, clique em **+ New Service** → selecione **App**.
+2. Dê o nome de `backend`.
+3. Na aba **Source**:
+   - Tipo: **GitHub** (ou Git)
+   - Repository: `pedrobolado2023/angecia2026` (ou a URL completa do Git)
+   - Branch: `main`
+4. Na aba **Build**:
+   - Build Method: selecione **Dockerfile**
+   - Context Path: `/backend`
+   - Dockerfile Path: `/backend/Dockerfile`
+   *(Alternativa com Nixpacks: selecione Nixpacks e coloque Root Directory: `/backend`)*
+5. Na aba **Environment**:
+   - `PORT`: `8000`
+   - `ALLOWED_ORIGINS`: `*` (ou o domínio do seu frontend)
+   - `OMNIBEES_ENVIRONMENT`: `sandbox` (ou `production`)
+   - `OMNIBEES_ENDPOINT_URL`: `https://cert.api.omnibees.com/ota2014b/PullService.svc`
+   - `OMNIBEES_REQUESTOR_ID`: sua credencial
+   - `OMNIBEES_USERNAME`: seu usuário
+   - `OMNIBEES_API_KEY`: sua chave de API
+   - `VELLUTO_ADMIN_PASSCODE`: sua senha mestra
+6. Na aba **Domains**:
+   - Adicione o domínio da sua API (ex: `api.seudominio.com`).
+   - Container Port: `8000`.
+   - O Easypanel gerará o certificado SSL (HTTPS) automaticamente via Let's Encrypt.
+7. Clique em **Deploy**.
+
+---
+
+#### 2. Frontend no Easypanel
+1. No mesmo Projeto, clique em **+ New Service** → selecione **App**.
+2. Dê o nome de `frontend`.
+3. Na aba **Source**:
+   - Repository: `pedrobolado2023/angecia2026`
+   - Branch: `main`
+4. Na aba **Build**:
+   - Build Method: selecione **Dockerfile** (Context Path: `/` e Dockerfile Path: `/Dockerfile`) OU **Nixpacks** (Root Directory: `/`).
+5. Na aba **Environment**:
+   - `NODE_ENV`: `production`
+   - `PORT`: `3000`
+   - `BACKEND_API_URL`: `http://backend:8000` (se estiver no mesmo projeto do Easypanel, a comunicação interna pela rede Docker funciona direto pelo nome do serviço!) ou use o domínio público `https://api.seudominio.com`.
+6. Na aba **Domains**:
+   - Adicione o domínio do seu site (ex: `seudominio.com` ou `app.seudominio.com`).
+   - Container Port: `3000`.
+7. Clique em **Deploy**.
+
+---
+
+### Método 2: Usando o Compose Service do Easypanel
+1. No seu Projeto no Easypanel, clique em **+ New Service** → **Compose**.
+2. Conecte ao repositório `pedrobolado2023/angecia2026`.
+3. Aponte para o arquivo `docker-compose.yml`.
+4. O Easypanel subirá os dois serviços interligados com uma única ação.
+
+---
+
 ## 🔒 Segurança Zero-Leak
 
 - Arquivos `.env` e `.env.local` estão estritamente no `.gitignore` e **nunca** vão para o GitHub.

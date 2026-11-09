@@ -9,12 +9,17 @@ services:
     container_name: velluto-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
       - PORT=8000
-      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-      - OMNIBEES_ENVIRONMENT=sandbox
-      - OMNIBEES_ENDPOINT_URL=https://cert.api.omnibees.com/ota2014b/PullService.svc
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - OMNIBEES_ENVIRONMENT=${OMNIBEES_ENVIRONMENT:-sandbox}
+      - OMNIBEES_ENDPOINT_URL=${OMNIBEES_ENDPOINT_URL:-https://cert.api.omnibees.com/ota2014b/PullService.svc}
+      - OMNIBEES_REQUESTOR_ID=${OMNIBEES_REQUESTOR_ID:-}
+      - OMNIBEES_USERNAME=${OMNIBEES_USERNAME:-}
+      - OMNIBEES_API_KEY=${OMNIBEES_API_KEY:-}
+      - OMNIBEES_WEBHOOK_SECRET=${OMNIBEES_WEBHOOK_SECRET:-}
+      - VELLUTO_ADMIN_PASSCODE=${VELLUTO_ADMIN_PASSCODE:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -31,11 +36,12 @@ services:
     container_name: velluto-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - BACKEND_API_URL=http://backend:8000
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://backend:8000}
     depends_on:
       backend:
         condition: service_healthy
+
