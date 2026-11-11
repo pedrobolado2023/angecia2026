@@ -338,6 +338,8 @@ export default function HospedeClubApp() {
                 netRate: net,
                 barRate: bar,
                 hotelbedsCode: liveHotel.code,
+                heroImage: liveHotel.heroImage || h.heroImage,
+                gallery: (liveHotel.gallery && liveHotel.gallery.length > 0) ? liveHotel.gallery : h.gallery,
                 scarcityLabel: `Disponibilidade Confirmada • ${
                   liveHotel.rooms?.[0]?.rates?.[0]?.boardName ||
                   "Café da Manhã Incluso"
@@ -392,12 +394,15 @@ export default function HospedeClubApp() {
                 ];
 
                 const photoPalette = isUrban ? urbanPhotos : resortPhotos;
-                const chosenHero = photoPalette[idx % photoPalette.length];
-                const galleryPhotos = [
+                const fallbackHero = photoPalette[idx % photoPalette.length];
+                const fallbackGallery = [
                   photoPalette[(idx + 1) % photoPalette.length],
                   photoPalette[(idx + 2) % photoPalette.length],
                   photoPalette[(idx + 3) % photoPalette.length],
                 ];
+
+                const heroImage = hbHotel.heroImage || fallbackHero;
+                const gallery = (hbHotel.gallery && hbHotel.gallery.length > 0) ? hbHotel.gallery : fallbackGallery;
 
                 newHotelsToAdd.push({
                   id: `hotelbeds-${hbHotel.code}`,
@@ -415,8 +420,8 @@ export default function HospedeClubApp() {
                   stars: hbHotel.categoryCode?.startsWith("5") ? 5 : hbHotel.categoryCode?.startsWith("4") ? 4 : 4,
                   ratingScore: 9.2 + ((idx * 3) % 7) / 10,
                   reviewsCount: 190 + idx * 25,
-                  heroImage: chosenHero,
-                  gallery: galleryPhotos,
+                  heroImage: heroImage,
+                  gallery: gallery,
                   netRate: hbHotel.hospedeClubPricing.netRate,
                   barRate: hbHotel.hospedeClubPricing.barRate,
                   omnibeesAvailableRooms: 3,
@@ -430,9 +435,9 @@ export default function HospedeClubApp() {
                   isFlashDeal: idx === 0,
                   flashDealRemainingSeconds: 7200,
                   omnibeesChannelCode: `HB-${hbHotel.code}`,
-                  primaryLandmarkDistance: `Localizado em ${
-                    hbHotel.zoneName || "área nobre"
-                  }`,
+                  primaryLandmarkDistance: hbHotel.address
+                    ? `Localizado em ${hbHotel.address}`
+                    : `Localizado em ${hbHotel.zoneName || "área nobre"}`,
                   landmarkDistances: [
                     {
                       landmarkName: "Centro & Acesso Principal",
@@ -440,12 +445,17 @@ export default function HospedeClubApp() {
                       walkOrDrive: "walk" as const,
                     },
                   ],
-                  curationHighlights: [
-                    "Tarifa de canal direto com desconto exclusivo de membro",
-                    hbHotel.rooms?.[0]?.rates?.[0]?.boardName ||
-                      "Café da manhã incluso",
-                    "Reserva confirmada com emissão imediata de voucher",
-                  ],
+                  curationHighlights: (hbHotel.facilities && hbHotel.facilities.length > 0)
+                    ? [
+                        ...hbHotel.facilities.slice(0, 2),
+                        hbHotel.rooms?.[0]?.rates?.[0]?.boardName || "Café da manhã incluso",
+                        "Reserva confirmada com emissão imediata de voucher",
+                      ]
+                    : [
+                        "Tarifa de canal direto com desconto exclusivo de membro",
+                        hbHotel.rooms?.[0]?.rates?.[0]?.boardName || "Café da manhã incluso",
+                        "Reserva confirmada com emissão imediata de voucher",
+                      ],
                   rooms: (hbHotel.rooms || []).map((r: any, rIdx: number) => ({
                     id: `hb-rm-${hbHotel.code}-${rIdx}`,
                     name: r.name || "Quarto Executivo Superior",

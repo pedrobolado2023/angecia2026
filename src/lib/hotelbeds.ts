@@ -41,6 +41,22 @@ export interface HotelbedsRoom {
   rates: HotelbedsRate[];
 }
 
+export interface HotelbedsContentData {
+  code: number | string;
+  name?: string;
+  description?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  heroImage?: string;
+  gallery: string[];
+  facilities?: string[];
+}
+
 export interface HotelbedsHotelResult {
   code: number | string;
   name: string;
@@ -55,6 +71,12 @@ export interface HotelbedsHotelResult {
   minRate: number;
   maxRate: number;
   currency: string;
+  heroImage?: string;
+  gallery?: string[];
+  description?: string;
+  address?: string;
+  postalCode?: string;
+  facilities?: string[];
   rooms: HotelbedsRoom[];
 }
 
@@ -204,6 +226,94 @@ export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
   }
 }
 
+// Cache em memória do Content API com TTL de 24 horas
+const contentCache = new Map<
+  string | number,
+  { timestamp: number; data: HotelbedsContentData }
+>();
+const CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Consulta fotos reais (CDN GIATA), descrições em português e facilidades na Hotelbeds Content API
+ */
+export async function fetchHotelbedsContent(
+  codes: (number | string)[]
+): Promise<Record<string | number, HotelbedsContentData>> {
+  if (!codes || codes.length === 0) return {};
+
+  const cfg = getHotelbedsConfig();
+  if (!cfg.apiKey || !cfg.secret) return {};
+
+  const result: Record<string | number, HotelbedsContentData> = {};
+  const missingCodes: (number | string)[] = [];
+  const now = Date.now();
+
+  for (const c of codes) {
+    const cached = contentCache.get(c);
+    if (cached && now - cached.timestamp < CONTENT_CACHE_TTL_MS) {
+      result[c] = cached.data;
+    } else {
+      missingCodes.push(c);
+    }
+  }
+
+  if (missingCodes.length === 0) {
+    return result;
+  }
+
+  try {
+    const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
+    // Agrupa códigos em lotes de até 50 por chamada
+    const codesStr = missingCodes.slice(0, 50).join(",");
+    const contentBaseUrl = cfg.baseUrl.replace(/\/hotel-api\/.*$/, "");
+    const url = `${contentBaseUrl}/hotel-content-api/1.0/hotels?codes=${codesStr}&language=POR&fields=all`;
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Api-key": cfg.apiKey,
+        "X-Signature": signature,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const hotels = data.hotels || (data.hotel ? [data.hotel] : []);
+      for (const h of hotels) {
+        const images = (h.images || []).map(
+          (img: any) => `https://photos.hotelbeds.com/giata/bigger/${img.path}`
+        );
+        const facilities = (h.facilities || [])
+          .map((f: any) => f.description?.content)
+          .filter(Boolean)
+          .slice(0, 10);
+
+        const contentItem: HotelbedsContentData = {
+          code: h.code,
+          name: h.name?.content || h.name,
+          description: h.description?.content,
+          address: h.address?.content,
+          city: h.city?.content,
+          postalCode: h.postalCode,
+          coordinates: h.coordinates,
+          heroImage: images[0] || undefined,
+          gallery: images.slice(0, 8),
+          facilities,
+        };
+
+        contentCache.set(h.code, { timestamp: now, data: contentItem });
+        result[h.code] = contentItem;
+      }
+    }
+  } catch (err) {
+    console.warn("[Hotelbeds Content API] Falha silenciosa:", err);
+  }
+
+  return result;
+}
+
 /**
  * Consulta disponibilidade de hotéis na Hotelbeds
  */
@@ -273,38 +383,58 @@ export async function searchHotelbedsAvailability(params: {
     const data = await res.json();
     const hotelsList = data.hotels?.hotels || [];
 
-    const mappedHotels: HotelbedsHotelResult[] = hotelsList.map((h: any) => ({
-      code: h.code,
-      name: h.name,
-      categoryCode: h.categoryCode,
-      categoryName: h.categoryName,
-      destinationCode: h.destinationCode,
-      destinationName: h.destinationName,
-      zoneCode: h.zoneCode,
-      zoneName: h.zoneName,
-      latitude: h.latitude,
-      longitude: h.longitude,
-      minRate: Number(h.minRate || 0),
-      maxRate: Number(h.maxRate || 0),
-      currency: h.currency || "BRL",
-      rooms: (h.rooms || []).map((r: any) => ({
-        code: r.code,
-        name: r.name,
-        rates: (r.rates || []).map((rate: any) => ({
-          rateKey: rate.rateKey,
-          rateClass: rate.rateClass,
-          rateType: rate.rateType,
-          net: Number(rate.net || 0),
-          sellingRate: rate.sellingRate ? Number(rate.sellingRate) : undefined,
-          hotelMandatory: rate.hotelMandatory,
-          allotted: rate.allotted,
-          paymentType: rate.paymentType,
-          boardCode: rate.boardCode,
-          boardName: rate.boardName,
-          cancellationPolicies: rate.cancellationPolicies,
+    // Hidrata em lote as fotos oficiais do CDN GIATA, descrições e comodidades
+    const codes = hotelsList.map((h: any) => h.code);
+    let contentMap: Record<string | number, HotelbedsContentData> = {};
+    try {
+      if (codes.length > 0) {
+        contentMap = await fetchHotelbedsContent(codes);
+      }
+    } catch (e) {
+      console.warn("[Hotelbeds] Falha ao hidratar Content API:", e);
+    }
+
+    const mappedHotels: HotelbedsHotelResult[] = hotelsList.map((h: any) => {
+      const content = contentMap[h.code];
+      return {
+        code: h.code,
+        name: h.name,
+        categoryCode: h.categoryCode,
+        categoryName: h.categoryName,
+        destinationCode: h.destinationCode,
+        destinationName: h.destinationName,
+        zoneCode: h.zoneCode,
+        zoneName: h.zoneName,
+        latitude: h.latitude,
+        longitude: h.longitude,
+        minRate: Number(h.minRate || 0),
+        maxRate: Number(h.maxRate || 0),
+        currency: h.currency || "BRL",
+        heroImage: content?.heroImage,
+        gallery: content?.gallery || [],
+        description: content?.description,
+        address: content?.address,
+        postalCode: content?.postalCode,
+        facilities: content?.facilities || [],
+        rooms: (h.rooms || []).map((r: any) => ({
+          code: r.code,
+          name: r.name,
+          rates: (r.rates || []).map((rate: any) => ({
+            rateKey: rate.rateKey,
+            rateClass: rate.rateClass,
+            rateType: rate.rateType,
+            net: Number(rate.net || 0),
+            sellingRate: rate.sellingRate ? Number(rate.sellingRate) : undefined,
+            hotelMandatory: rate.hotelMandatory,
+            allotted: rate.allotted,
+            paymentType: rate.paymentType,
+            boardCode: rate.boardCode,
+            boardName: rate.boardName,
+            cancellationPolicies: rate.cancellationPolicies,
+          })),
         })),
-      })),
-    }));
+      };
+    });
 
     return {
       ok: true,
