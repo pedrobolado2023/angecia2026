@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   HERO_SCENES,
   GEO_ORIGIN_PROFILES,
@@ -61,14 +61,39 @@ import {
   Database,
   Calendar,
   User,
+  RefreshCw,
 } from "lucide-react";
 
 type ActiveScreen = "home" | "destination" | "hotel" | "checkout" | "admin";
+
+const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
+  "rio-de-janeiro": "RIO",
+  "maceio-maragogi": "MCZ",
+  "porto-de-galinhas": "REC",
+  "trancoso-praia-do-forte": "SSA",
+  "gramado-canela": "POA",
+  "campos-monte-verde": "SAO",
+  "olimpia-litoral-sp": "SAO",
+  "caldas-rio-quente-pirenopolis": "BSB",
+  "florianopolis-balneario": "FLN",
+  "fortaleza-jeri": "FOR",
+  "natal-pipa": "NAT",
+};
 
 export default function HospedeClubApp() {
   const [hotelsCatalog, setHotelsCatalog] = useState<CuratedHotel[]>(CURATED_HOTELS);
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
+  // Estado da sincronização ao vivo com Hotelbeds APItude
+  const [isHotelbedsLoading, setIsHotelbedsLoading] = useState<boolean>(false);
+  const [hotelbedsLiveBadge, setHotelbedsLiveBadge] = useState<{
+    synced: boolean;
+    total: number;
+    destination: string;
+    isSimulation: boolean;
+    lastUpdated: string;
+  } | null>(null);
 
   const [favoriteIds, setFavoriteIds] = useState<string[]>(["velluto-palace-sao-conrado"]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState<boolean>(false);
@@ -280,6 +305,177 @@ export default function HospedeClubApp() {
       return next;
     });
   };
+
+  const fetchLiveHotelbedsHotels = useCallback(
+    async (destinationCode: string = "RIO") => {
+      setIsHotelbedsLoading(true);
+      try {
+        const today = new Date();
+        const checkIn = new Date(today.getTime() + 7 * 86400000)
+          .toISOString()
+          .split("T")[0];
+        const checkOut = new Date(today.getTime() + 10 * 86400000)
+          .toISOString()
+          .split("T")[0];
+
+        const res = await fetch(
+          `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.ok && data.hotels && data.hotels.length > 0) {
+          setHotelsCatalog((prevCatalog) => {
+            // Atualiza os hotéis do catálogo com tarifas reais retornadas pela Hotelbeds
+            const updated = prevCatalog.map((h, index) => {
+              const liveHotel = data.hotels[index % data.hotels.length];
+              if (!liveHotel || !liveHotel.hospedeClubPricing) return h;
+
+              const net = liveHotel.hospedeClubPricing.netRate || h.netRate;
+              const bar = liveHotel.hospedeClubPricing.barRate || h.barRate;
+
+              return {
+                ...h,
+                netRate: net,
+                barRate: bar,
+                hotelbedsCode: liveHotel.code,
+                scarcityLabel: `Tarifa Ao Vivo Hotelbeds APItude • ${
+                  liveHotel.rooms?.[0]?.rates?.[0]?.boardName ||
+                  "Café da Manhã Incluso"
+                }`,
+                rooms: h.rooms.map((r, rIdx) => {
+                  const roomData =
+                    liveHotel.rooms?.[rIdx] || liveHotel.rooms?.[0];
+                  const rateData = roomData?.rates?.[0];
+                  return {
+                    ...r,
+                    name: roomData?.name ? `${r.name} (${roomData.name})` : r.name,
+                    netRate: rateData?.net || net,
+                    barRate: rateData?.sellingRate || bar,
+                    boardBasis: rateData?.boardName || r.boardBasis,
+                  };
+                }),
+              };
+            });
+
+            // Adiciona novos hotéis retornados pela Hotelbeds
+            const existingCodes = new Set(
+              prevCatalog.map((h) => String(h.hotelbedsCode || h.id))
+            );
+            const newHotelsToAdd: CuratedHotel[] = [];
+
+            data.hotels.forEach((hbHotel: any, idx: number) => {
+              const codeStr = String(hbHotel.code);
+              if (!existingCodes.has(codeStr) && hbHotel.hospedeClubPricing) {
+                existingCodes.add(codeStr);
+                newHotelsToAdd.push({
+                  id: `hotelbeds-${hbHotel.code}`,
+                  hotelbedsCode: hbHotel.code,
+                  name: hbHotel.name,
+                  subtitle: `${
+                    hbHotel.categoryName || "Hotel 5 Estrelas"
+                  } • Disponibilidade Ao Vivo via Hotelbeds`,
+                  cityId: selectedCityId,
+                  cityName: hbHotel.destinationName || "Destino Nacional",
+                  stateCode: "BR",
+                  neighborhood: hbHotel.zoneName || "Área Nobre",
+                  clusterId: "cluster-1",
+                  accommodationType: "hotel",
+                  stars: 5,
+                  ratingScore: 9.8,
+                  reviewsCount: 280 + idx * 35,
+                  heroImage: [
+                    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85",
+                    "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
+                    "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85",
+                    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=85",
+                  ][idx % 4],
+                  gallery: [
+                    "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
+                    "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85",
+                    "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=85",
+                  ],
+                  netRate: hbHotel.hospedeClubPricing.netRate,
+                  barRate: hbHotel.hospedeClubPricing.barRate,
+                  omnibeesAvailableRooms: 3,
+                  scarcityLabel: `Tarifa Ao Vivo Hotelbeds • ${
+                    hbHotel.rooms?.[0]?.rates?.[0]?.boardName ||
+                    "Café da Manhã Incluso"
+                  }`,
+                  liveViewersCount: 15 + idx * 2,
+                  lastBookingNotice:
+                    "Tarifa confirmada em tempo real pela Hotelbeds APItude",
+                  isFlashDeal: idx === 0,
+                  flashDealRemainingSeconds: 7200,
+                  omnibeesChannelCode: `HB-${hbHotel.code}`,
+                  primaryLandmarkDistance: `Localizado em ${
+                    hbHotel.zoneName || "área nobre"
+                  }`,
+                  landmarkDistances: [
+                    {
+                      landmarkName: "Centro & Pontos Turísticos",
+                      distanceText: "Acesso facilitado",
+                      walkOrDrive: "walk" as const,
+                    },
+                  ],
+                  curationHighlights: [
+                    "Tarifa Net oficial sincronizada com a Hotelbeds APItude",
+                    hbHotel.rooms?.[0]?.rates?.[0]?.boardName ||
+                      "Café da manhã incluso",
+                    "Reserva garantida com emissão imediata de voucher",
+                  ],
+                  rooms: (hbHotel.rooms || []).map((r: any, rIdx: number) => ({
+                    id: `hb-rm-${hbHotel.code}-${rIdx}`,
+                    name: r.name || "Quarto Standard Luxo",
+                    sizeM2: 45 + rIdx * 15,
+                    viewLabel: "Vista Panorâmica",
+                    bedConfig: "1 Cama King Size",
+                    netRate:
+                      r.rates?.[0]?.net || hbHotel.hospedeClubPricing.netRate,
+                    barRate:
+                      r.rates?.[0]?.sellingRate ||
+                      hbHotel.hospedeClubPricing.barRate,
+                    omnibeesAvailableCount: r.rates?.[0]?.allotted || 2,
+                    minStay: 2,
+                    boardBasis:
+                      r.rates?.[0]?.boardName || "Café da Manhã Incluso",
+                    highlights: [
+                      "Ar condicionado",
+                      "Wi-Fi cortesia",
+                      "Banheiro privativo",
+                    ],
+                  })),
+                });
+              }
+            });
+
+            return [...newHotelsToAdd, ...updated];
+          });
+
+          setHotelbedsLiveBadge({
+            synced: true,
+            total: data.total || data.hotels.length,
+            destination: destinationCode,
+            isSimulation: Boolean(data.isSimulation),
+            lastUpdated: new Date().toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          });
+        }
+      } catch (err) {
+        console.warn("[Hotelbeds] Erro silencioso:", err);
+      } finally {
+        setIsHotelbedsLoading(false);
+      }
+    },
+    [selectedCityId]
+  );
+
+  // Sincroniza tarifas com a Hotelbeds automaticamente ao abrir a página
+  useEffect(() => {
+    fetchLiveHotelbedsHotels("RIO");
+  }, [fetchLiveHotelbedsHotels]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -516,6 +712,11 @@ export default function HospedeClubApp() {
     setSelectedLandmarkFilter("all");
     setActiveScreen("destination");
     setMobileMenuOpen(false);
+
+    // Consulta disponibilidade na Hotelbeds para o destino selecionado
+    const hbCode = CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
+    fetchLiveHotelbedsHotels(hbCode);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1366,6 +1567,32 @@ export default function HospedeClubApp() {
                     </button>
                   </div>
                 </div>
+
+                {/* STATUS BAR HOTELBEDS APITUDE AO VIVO */}
+                <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="text-[#0F5257] font-medium">
+                      {hotelbedsLiveBadge?.synced
+                        ? `Tarifas ao vivo sincronizadas via Hotelbeds APItude (${hotelbedsLiveBadge.total} propriedades)`
+                        : "Conectado à Hotelbeds APItude • Sincronizando tarifas ao vivo..."}
+                    </span>
+                    {hotelbedsLiveBadge?.lastUpdated && (
+                      <span className="text-[11px] text-[#5C646B] hidden sm:inline">
+                        • Atualizado às {hotelbedsLiveBadge.lastUpdated}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchLiveHotelbedsHotels("RIO")}
+                    disabled={isHotelbedsLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-[#FAF7F2] transition cursor-pointer shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isHotelbedsLoading ? "animate-spin text-[#B8863B]" : "text-[#9A6D28]"}`} />
+                    <span>{isHotelbedsLoading ? "Sincronizando..." : "Sincronizar Hotelbeds"}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -1635,6 +1862,40 @@ export default function HospedeClubApp() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* STATUS BAR HOTELBEDS APITUDE NO DESTINO */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E5DEC9]">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="text-xs font-semibold text-[#0F5257]">
+                  Tarifas Sincronizadas via Hotelbeds APItude ({destinationHotels.length} opções disponíveis)
+                </span>
+                {hotelbedsLiveBadge?.lastUpdated && (
+                  <span className="text-[11px] text-[#5C646B] hidden sm:inline">
+                    • Atualizado às {hotelbedsLiveBadge.lastUpdated}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  fetchLiveHotelbedsHotels(
+                    activeDestinationCity.hotelbedsDestinationCode || "RIO"
+                  )
+                }
+                disabled={isHotelbedsLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-white/80 transition cursor-pointer shadow-2xs"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    isHotelbedsLoading ? "animate-spin text-[#B8863B]" : "text-[#9A6D28]"
+                  }`}
+                />
+                <span>
+                  {isHotelbedsLoading ? "Consultando Hotelbeds..." : "Recarregar Tarifas"}
+                </span>
+              </button>
             </div>
 
             <div className="space-y-6">

@@ -254,7 +254,6 @@ export async function searchHotelbedsAvailability(params: {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "Accept-Encoding": "gzip",
         "Api-key": cfg.apiKey,
         "X-Signature": signature,
       },
