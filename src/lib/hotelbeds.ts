@@ -588,3 +588,4 @@ function getSimulatedHotelbedsAvailability(
     ],
   };
 }
+

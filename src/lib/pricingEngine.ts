@@ -101,9 +101,9 @@ export function calculateHospedePricing(
   securityDepositInput: number = 0
 ): PricingCalculationResult {
   // Trava contra tarifa zero, negativa ou inválida (Agente 02 FinOps Guardrail)
-  if (!Number.isFinite(netRateInput) || netRateInput <= 50) {
+  if (!Number.isFinite(netRateInput) || netRateInput <= 0) {
     throw new Error(
-      `[FINOPS GUARDRAIL BLOCK] Tarifa Net inválida ou abaixo do piso operacional de segurança (Recebido: R$ ${netRateInput}). Reserva bloqueada.`
+      `[FINOPS GUARDRAIL BLOCK] Tarifa Net inválida ou zero (Recebido: R$ ${netRateInput}). Reserva bloqueada.`
     );
   }
 
