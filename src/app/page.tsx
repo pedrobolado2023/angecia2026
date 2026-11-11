@@ -17,7 +17,6 @@ import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
 import { LuxuryImage } from "@/components/LuxuryImage";
-import { DestinationFolderCarousel } from "@/components/DestinationFolderCarousel";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import {
   Sparkles,
@@ -339,7 +338,7 @@ export default function HospedeClubApp() {
                 netRate: net,
                 barRate: bar,
                 hotelbedsCode: liveHotel.code,
-                scarcityLabel: `Tarifa Ao Vivo Hotelbeds APItude • ${
+                scarcityLabel: `Disponibilidade Confirmada • ${
                   liveHotel.rooms?.[0]?.rates?.[0]?.boardName ||
                   "Café da Manhã Incluso"
                 }`,
@@ -358,7 +357,7 @@ export default function HospedeClubApp() {
               };
             });
 
-            // Adiciona novos hotéis retornados pela Hotelbeds
+            // Adiciona novos hotéis retornados pelo canal oficial de disponibilidade
             const existingCodes = new Set(
               prevCatalog.map((h) => String(h.hotelbedsCode || h.id))
             );
@@ -368,43 +367,66 @@ export default function HospedeClubApp() {
               const codeStr = String(hbHotel.code);
               if (!existingCodes.has(codeStr) && hbHotel.hospedeClubPricing) {
                 existingCodes.add(codeStr);
+
+                // Curadoria contextual de fotos: urbano vs resort
+                const isUrban = /brasilia|taguatinga|sao paulo|curitiba|belo horizonte|porto alegre|goiania|campinas|florianopolis/i.test(
+                  `${hbHotel.name} ${hbHotel.destinationName || ""} ${hbHotel.zoneName || ""}`
+                ) || /comfort|suites|ibis|mercure|novotel|windsor|bourbon|transamerica|bristol|hotel|flat|executivo/i.test(
+                  hbHotel.name
+                );
+
+                const urbanPhotos = [
+                  "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=85",
+                ];
+
+                const resortPhotos = [
+                  "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=85",
+                  "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=85",
+                ];
+
+                const photoPalette = isUrban ? urbanPhotos : resortPhotos;
+                const chosenHero = photoPalette[idx % photoPalette.length];
+                const galleryPhotos = [
+                  photoPalette[(idx + 1) % photoPalette.length],
+                  photoPalette[(idx + 2) % photoPalette.length],
+                  photoPalette[(idx + 3) % photoPalette.length],
+                ];
+
                 newHotelsToAdd.push({
                   id: `hotelbeds-${hbHotel.code}`,
                   hotelbedsCode: hbHotel.code,
                   name: hbHotel.name,
                   subtitle: `${
-                    hbHotel.categoryName || "Hotel 5 Estrelas"
-                  } • Disponibilidade Ao Vivo via Hotelbeds`,
+                    hbHotel.categoryName || "Hotel Selecionado"
+                  } • Tarifa Exclusiva Hóspede Club`,
                   cityId: selectedCityId,
                   cityName: hbHotel.destinationName || "Destino Nacional",
                   stateCode: "BR",
                   neighborhood: hbHotel.zoneName || "Área Nobre",
                   clusterId: "cluster-1",
                   accommodationType: "hotel",
-                  stars: 5,
-                  ratingScore: 9.8,
-                  reviewsCount: 280 + idx * 35,
-                  heroImage: [
-                    "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85",
-                    "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
-                    "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85",
-                    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=85",
-                  ][idx % 4],
-                  gallery: [
-                    "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
-                    "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85",
-                    "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=85",
-                  ],
+                  stars: hbHotel.categoryCode?.startsWith("5") ? 5 : hbHotel.categoryCode?.startsWith("4") ? 4 : 4,
+                  ratingScore: 9.2 + ((idx * 3) % 7) / 10,
+                  reviewsCount: 190 + idx * 25,
+                  heroImage: chosenHero,
+                  gallery: galleryPhotos,
                   netRate: hbHotel.hospedeClubPricing.netRate,
                   barRate: hbHotel.hospedeClubPricing.barRate,
                   omnibeesAvailableRooms: 3,
-                  scarcityLabel: `Tarifa Ao Vivo Hotelbeds • ${
+                  scarcityLabel: `Tarifa de Membro • ${
                     hbHotel.rooms?.[0]?.rates?.[0]?.boardName ||
                     "Café da Manhã Incluso"
                   }`,
-                  liveViewersCount: 15 + idx * 2,
+                  liveViewersCount: 12 + idx * 2,
                   lastBookingNotice:
-                    "Tarifa confirmada em tempo real pela Hotelbeds APItude",
+                    "Tarifa especial com disponibilidade confirmada em tempo real",
                   isFlashDeal: idx === 0,
                   flashDealRemainingSeconds: 7200,
                   omnibeesChannelCode: `HB-${hbHotel.code}`,
@@ -413,36 +435,36 @@ export default function HospedeClubApp() {
                   }`,
                   landmarkDistances: [
                     {
-                      landmarkName: "Centro & Pontos Turísticos",
-                      distanceText: "Acesso facilitado",
+                      landmarkName: "Centro & Acesso Principal",
+                      distanceText: "Localização privilegiada",
                       walkOrDrive: "walk" as const,
                     },
                   ],
                   curationHighlights: [
-                    "Tarifa Net oficial sincronizada com a Hotelbeds APItude",
+                    "Tarifa de canal direto com desconto exclusivo de membro",
                     hbHotel.rooms?.[0]?.rates?.[0]?.boardName ||
                       "Café da manhã incluso",
-                    "Reserva garantida com emissão imediata de voucher",
+                    "Reserva confirmada com emissão imediata de voucher",
                   ],
                   rooms: (hbHotel.rooms || []).map((r: any, rIdx: number) => ({
                     id: `hb-rm-${hbHotel.code}-${rIdx}`,
-                    name: r.name || "Quarto Standard Luxo",
-                    sizeM2: 45 + rIdx * 15,
+                    name: r.name || "Quarto Executivo Superior",
+                    sizeM2: 38 + rIdx * 12,
                     viewLabel: "Vista Panorâmica",
-                    bedConfig: "1 Cama King Size",
+                    bedConfig: "1 Cama King Size ou 2 Camas de Solteiro",
                     netRate:
                       r.rates?.[0]?.net || hbHotel.hospedeClubPricing.netRate,
                     barRate:
                       r.rates?.[0]?.sellingRate ||
                       hbHotel.hospedeClubPricing.barRate,
                     omnibeesAvailableCount: r.rates?.[0]?.allotted || 2,
-                    minStay: 2,
+                    minStay: 1,
                     boardBasis:
                       r.rates?.[0]?.boardName || "Café da Manhã Incluso",
                     highlights: [
                       "Ar condicionado",
-                      "Wi-Fi cortesia",
-                      "Banheiro privativo",
+                      "Wi-Fi cortesia de alta velocidade",
+                      "Banheiro privativo e amenidades",
                     ],
                   })),
                 });
@@ -1242,13 +1264,6 @@ export default function HospedeClubApp() {
         )}
       </header>
 
-      {/* FOLDER DIGITAL DESLIZANTE DE DESTINOS, IMAGENS, DESCONTOS E PERÍODOS */}
-      <DestinationFolderCarousel
-        selectedCityId={selectedCityId}
-        activeScreen={activeScreen}
-        onSelectDestination={handleOpenDestination}
-      />
-
       {/* =====================================================================
           TELA 01: HOME SOLAR & RIVIERA DAYLIGHT (CLARA, BONITA E CHAMATIVA)
          ===================================================================== */}
@@ -1568,14 +1583,14 @@ export default function HospedeClubApp() {
                   </div>
                 </div>
 
-                {/* STATUS BAR HOTELBEDS APITUDE AO VIVO */}
+                {/* STATUS BAR DE TARIFAS AO VIVO */}
                 <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex flex-wrap items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <span className="text-[#0F5257] font-medium">
                       {hotelbedsLiveBadge?.synced
-                        ? `Tarifas ao vivo sincronizadas via Hotelbeds APItude (${hotelbedsLiveBadge.total} propriedades)`
-                        : "Conectado à Hotelbeds APItude • Sincronizando tarifas ao vivo..."}
+                        ? `Tarifas ao vivo sincronizadas (${hotelbedsLiveBadge.total} propriedades verificadas)`
+                        : "Conectado ao canal oficial • Atualizando tarifas ao vivo..."}
                     </span>
                     {hotelbedsLiveBadge?.lastUpdated && (
                       <span className="text-[11px] text-[#5C646B] hidden sm:inline">
@@ -1590,7 +1605,7 @@ export default function HospedeClubApp() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-[#FAF7F2] transition cursor-pointer shadow-2xs"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isHotelbedsLoading ? "animate-spin text-[#B8863B]" : "text-[#9A6D28]"}`} />
-                    <span>{isHotelbedsLoading ? "Sincronizando..." : "Sincronizar Hotelbeds"}</span>
+                    <span>{isHotelbedsLoading ? "Atualizando..." : "Atualizar Tarifas"}</span>
                   </button>
                 </div>
               </div>
@@ -1782,94 +1797,84 @@ export default function HospedeClubApp() {
       )}
 
       {/* =====================================================================
-          TELA 02: PÁGINA DE DESTINO INTERATIVA (CLARA, SOLAR & ELEGANTE)
+          TELA 02: PÁGINA DE DESTINO (COMPACTA, ELEGANTE E COM FOCO NOS QUARTOS)
          ===================================================================== */}
       {activeScreen === "destination" && (
-        <main className="flex-1">
-          <section className="relative bg-[#F3EDE2] text-[#182026] py-12 sm:py-16 px-4 sm:px-6 md:px-8 overflow-hidden border-b border-[#E5DEC9]">
-            <LuxuryImage
-              src={activeDestinationCity.heroImage}
-              alt={activeDestinationCity.name}
-              fallbackLabel={activeDestinationCity.name}
-              className="absolute inset-0 w-full h-full opacity-90"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#FAF7F2]/96 via-[#FAF7F2]/85 to-white/30" />
+        <main className="flex-1 bg-[#FAF7F2]">
+          {/* HEADER COMPACTO E ELEGANTE (SEM IMAGEM GIGANTE QUE EMPURRA OS QUARTOS PARA BAIXO) */}
+          <section className="bg-white border-b border-[#E5DEC9] px-4 sm:px-6 md:px-8 py-5">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <button
+                  onClick={() => setActiveScreen("home")}
+                  className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-semibold hover:text-[#7A551E] transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar aos Destinos</span>
+                </button>
+                <span className="px-3 py-1 rounded-full bg-[#0F5257]/10 text-[#0F5257] text-[11px] font-medium">
+                  {activeDestinationCity.regionTag} • {activeDestinationCity.flightTimeFromOrigins[selectedGeoOriginId]}
+                </span>
+              </div>
 
-            <div className="relative z-10 max-w-7xl mx-auto">
-              <button
-                onClick={() => setActiveScreen("home")}
-                className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-medium hover:underline mb-4 cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Voltar à tela inicial</span>
-              </button>
+              <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+                <div>
+                  <h1 className="font-editorial text-3xl sm:text-4xl font-normal text-[#182026]">
+                    {activeDestinationCity.name}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-[#5C646B] mt-0.5 max-w-2xl">
+                    {activeDestinationCity.tagline}
+                  </p>
+                </div>
+                <div className="text-xs text-[#0F5257] font-medium bg-[#FAF7F2] px-3.5 py-1.5 rounded-xl border border-[#E5DEC9] self-start sm:self-auto shrink-0">
+                  Tarifas com até {activeDestinationCity.avgSavingsPercent}% de economia
+                </div>
+              </div>
 
-              <span className="text-[11px] uppercase tracking-[0.2em] text-[#0F5257] font-medium block mb-1">
-                {activeDestinationCity.regionTag} • {activeDestinationCity.flightTimeFromOrigins[selectedGeoOriginId]}
-              </span>
-
-              <h1 className="font-editorial text-4xl sm:text-5xl font-normal text-[#182026]">
-                {activeDestinationCity.name}
-              </h1>
-              <p className="text-sm sm:text-base text-[#465058] max-w-2xl mt-2">
-                {activeDestinationCity.tagline}
-              </p>
+              {/* FILTRO HORIZONTAL COMPACTO DE REGIÕES E PONTOS (EM VEZ DE CARDS GIGANTES) */}
+              {activeDestinationCity.landmarks && activeDestinationCity.landmarks.length > 0 && (
+                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[#F0EAE1] overflow-x-auto pb-1 text-xs">
+                  <span className="text-[11px] uppercase tracking-wider text-[#9A6D28] font-semibold shrink-0 mr-1">
+                    Filtrar por Região:
+                  </span>
+                  <button
+                    onClick={() => setSelectedLandmarkFilter("all")}
+                    className={`px-3 py-1.5 rounded-full shrink-0 font-medium transition cursor-pointer ${
+                      selectedLandmarkFilter === "all"
+                        ? "bg-[#182026] text-white shadow-xs"
+                        : "bg-[#F3EDE2] text-[#465058] hover:bg-[#EAE3D5]"
+                    }`}
+                  >
+                    Todas as Opções ({destinationHotels.length})
+                  </button>
+                  {activeDestinationCity.landmarks.map((lm) => {
+                    const isSelected = selectedLandmarkFilter === lm.id;
+                    return (
+                      <button
+                        key={lm.id}
+                        onClick={() => setSelectedLandmarkFilter(isSelected ? "all" : lm.id)}
+                        className={`px-3 py-1.5 rounded-full shrink-0 transition cursor-pointer ${
+                          isSelected
+                            ? "bg-[#B8863B] text-white font-medium shadow-xs"
+                            : "bg-[#F3EDE2] text-[#465058] hover:bg-[#EAE3D5]"
+                        }`}
+                      >
+                        {lm.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </section>
 
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-10">
-            <div className="mb-8">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium">
-                    Guia de Localização
-                  </span>
-                  <h2 className="font-editorial text-2xl sm:text-3xl font-normal text-[#182026] mt-0.5">
-                    Pontos Turísticos & Proximidade Real
-                  </h2>
-                </div>
-                {selectedLandmarkFilter !== "all" && (
-                  <button
-                    onClick={() => setSelectedLandmarkFilter("all")}
-                    className="px-3.5 py-1.5 rounded-full bg-[#B8863B] text-white text-xs cursor-pointer shadow-2xs"
-                  >
-                    Ver todos
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-                {activeDestinationCity.landmarks.map((lm) => {
-                  const isSelected = selectedLandmarkFilter === lm.id;
-                  return (
-                    <div
-                      key={lm.id}
-                      onClick={() =>
-                        setSelectedLandmarkFilter(isSelected ? "all" : lm.id)
-                      }
-                      className={`p-4 rounded-2xl border transition cursor-pointer ${
-                        isSelected
-                          ? "bg-[#F3EDE2] text-[#182026] border-[#B8863B] shadow-sm"
-                          : "bg-white text-[#182026] border-[#E5DEC9] hover:border-[#B8863B]"
-                      }`}
-                    >
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium block">
-                        {lm.category} • {lm.coordinatesLabel}
-                      </span>
-                      <h3 className="font-editorial text-xl font-normal mt-0.5">{lm.name}</h3>
-                      <p className="text-xs text-[#5C646B] mt-1">{lm.highlight}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* STATUS BAR HOTELBEDS APITUDE NO DESTINO */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E5DEC9]">
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6">
+            {/* STATUS BAR DE DISPONIBILIDADE CONFIRMADA (WHITE-LABEL) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-3.5 rounded-2xl bg-white border border-[#E5DEC9] shadow-2xs">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span className="text-xs font-semibold text-[#0F5257]">
-                  Tarifas Sincronizadas via Hotelbeds APItude ({destinationHotels.length} opções disponíveis)
+                  Tarifas Exclusivas Hóspede Club ({destinationHotels.length} opções com disponibilidade confirmada)
                 </span>
                 {hotelbedsLiveBadge?.lastUpdated && (
                   <span className="text-[11px] text-[#5C646B] hidden sm:inline">
@@ -1885,7 +1890,7 @@ export default function HospedeClubApp() {
                   )
                 }
                 disabled={isHotelbedsLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-white/80 transition cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-[#FAF7F2] text-xs text-[#182026] hover:bg-white transition cursor-pointer shadow-2xs"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
@@ -1893,7 +1898,7 @@ export default function HospedeClubApp() {
                   }`}
                 />
                 <span>
-                  {isHotelbedsLoading ? "Consultando Hotelbeds..." : "Recarregar Tarifas"}
+                  {isHotelbedsLoading ? "Atualizando tarifas..." : "Atualizar Tarifas"}
                 </span>
               </button>
             </div>
@@ -2023,9 +2028,9 @@ export default function HospedeClubApp() {
             </div>
           </div>
 
-          {/* Galeria com Carrossel Claro */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-10">
-            <div className="lg:col-span-8 relative h-64 sm:h-80 md:h-96 rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm">
+          {/* Galeria com Carrossel Compacto & Elegante */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
+            <div className="lg:col-span-8 relative h-56 sm:h-72 lg:h-80 rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm">
               <LuxuryImage
                 src={hotelAllPhotos[activePhotoIndex] || selectedHotel.heroImage}
                 alt={selectedHotel.name}
@@ -2056,13 +2061,13 @@ export default function HospedeClubApp() {
               </div>
             </div>
 
-            <div className="lg:col-span-4 flex flex-col justify-between gap-4">
-              <div className="grid grid-cols-3 lg:grid-cols-2 gap-2.5">
+            <div className="lg:col-span-4 flex flex-col justify-between gap-3">
+              <div className="grid grid-cols-3 lg:grid-cols-2 gap-2">
                 {hotelAllPhotos.slice(0, 4).map((imgUrl, idx) => (
                   <button
                     key={idx}
                     onClick={() => setActivePhotoIndex(idx)}
-                    className={`relative h-20 sm:h-28 lg:h-36 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
+                    className={`relative h-16 sm:h-22 lg:h-28 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
                       activePhotoIndex === idx
                         ? "border-[#B8863B] shadow-sm"
                         : "border-transparent opacity-75 hover:opacity-100"

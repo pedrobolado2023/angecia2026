@@ -478,7 +478,7 @@ function getSimulatedHotelbedsAvailability(
     hotels: [
       {
         code: 1067,
-        name: "Palácio Atlântico & Spa (Hotelbeds)",
+        name: "Palácio Atlântico & Spa",
         categoryCode: "5EST",
         categoryName: "5 STARS LUXURY",
         destinationCode: "RIO",
@@ -518,7 +518,7 @@ function getSimulatedHotelbedsAvailability(
       },
       {
         code: 2044,
-        name: "Reserva dos Corais Resort (Hotelbeds)",
+        name: "Reserva dos Corais Resort",
         categoryCode: "5EST",
         categoryName: "5 STARS RESORT",
         destinationCode: "MCZ",
@@ -552,7 +552,7 @@ function getSimulatedHotelbedsAvailability(
       },
       {
         code: 3088,
-        name: "Refúgio das Araucárias Boutique Hotel (Hotelbeds)",
+        name: "Refúgio das Araucárias Boutique Hotel",
         categoryCode: "5EST",
         categoryName: "BOUTIQUE LUXURY",
         destinationCode: "GRAM",
