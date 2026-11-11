@@ -8,6 +8,8 @@ Cobre:
 """
 
 import os
+import hashlib
+import time
 from math import ceil
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -247,9 +249,67 @@ def list_customers_for_campaigns(x_admin_passcode: Optional[str] = Header(None))
     return {
         "ok": True,
         "omnibees_env_configured": bool(OMNIBEES_API_KEY and OMNIBEES_REQUESTOR_ID),
+        "hotelbeds_env_configured": bool(HOTELBEDS_API_KEY and HOTELBEDS_SECRET),
         "count": len(CUSTOMERS_DB),
         "customers": list(CUSTOMERS_DB.values()),
     }
+
+
+# ============================================================================
+# CANAL HOTELEIRO GLOBAL: HOTELBEDS APITUDE
+# ============================================================================
+HOTELBEDS_API_KEY = os.getenv("HOTELBEDS_API_KEY", "")
+HOTELBEDS_SECRET = os.getenv("HOTELBEDS_SECRET", "")
+HOTELBEDS_ENVIRONMENT = os.getenv("HOTELBEDS_ENVIRONMENT", "test")
+HOTELBEDS_ENDPOINT_URL = os.getenv(
+    "HOTELBEDS_ENDPOINT_URL",
+    "https://api.hotelbeds.com"
+    if HOTELBEDS_ENVIRONMENT == "production"
+    else "https://api.test.hotelbeds.com",
+)
+
+
+def get_hotelbeds_headers():
+    if not HOTELBEDS_API_KEY or not HOTELBEDS_SECRET:
+        return None
+    ts = int(time.time())
+    raw = f"{HOTELBEDS_API_KEY}{HOTELBEDS_SECRET}{ts}".encode("utf-8")
+    sig = hashlib.sha256(raw).hexdigest()
+    return {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Api-key": HOTELBEDS_API_KEY,
+        "X-Signature": sig,
+    }
+
+
+@app.get("/api/v1/hotelbeds/status")
+def hotelbeds_status():
+    if not HOTELBEDS_API_KEY or not HOTELBEDS_SECRET:
+        return {
+            "ok": True,
+            "is_simulation": True,
+            "environment": HOTELBEDS_ENVIRONMENT,
+            "message": "Hotelbeds operando em modo simulação. Adicione HOTELBEDS_API_KEY e HOTELBEDS_SECRET no Easypanel.",
+        }
+    try:
+        import requests
+
+        headers = get_hotelbeds_headers()
+        res = requests.get(
+            f"{HOTELBEDS_ENDPOINT_URL}/hotel-api/1.0/status",
+            headers=headers,
+            timeout=5,
+        )
+        return {
+            "ok": res.ok,
+            "is_simulation": False,
+            "status_code": res.status_code,
+            "environment": HOTELBEDS_ENVIRONMENT,
+            "endpoint": HOTELBEDS_ENDPOINT_URL,
+        }
+    except Exception as e:
+        return {"ok": False, "is_simulation": False, "error": str(e)}
 
 
 if __name__ == "__main__":

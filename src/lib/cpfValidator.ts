@@ -39,3 +39,4 @@ export function formatCPF(cpf: string): string {
     return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6)}`;
   return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9, 11)}`;
 }
+

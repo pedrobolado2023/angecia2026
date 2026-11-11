@@ -16,6 +16,10 @@ export interface ServerOmnibeesConfig {
   webhookSecret: string;
   ratePlanNetCode: string;
   ratePlanBarCode: string;
+  hotelbedsApiKey: string;
+  hotelbedsSecret: string;
+  hotelbedsEnvironment: "test" | "production";
+  hotelbedsEndpointUrl: string;
   staysnetApiUrl: string;
   staysnetClientId: string;
   staysnetClientSecret: string;
@@ -49,6 +53,15 @@ export function getServerOmnibeesConfig(): ServerOmnibeesConfig {
     webhookSecret: process.env.OMNIBEES_WEBHOOK_SECRET || "",
     ratePlanNetCode: process.env.OMNIBEES_RATE_PLAN_NET || "RATE_NET_CLUB",
     ratePlanBarCode: process.env.OMNIBEES_RATE_PLAN_BAR || "RATE_BAR_PUBLIC",
+    hotelbedsApiKey: process.env.HOTELBEDS_API_KEY || "",
+    hotelbedsSecret: process.env.HOTELBEDS_SECRET || "",
+    hotelbedsEnvironment:
+      process.env.HOTELBEDS_ENVIRONMENT === "production" ? "production" : "test",
+    hotelbedsEndpointUrl:
+      process.env.HOTELBEDS_ENDPOINT_URL ||
+      (process.env.HOTELBEDS_ENVIRONMENT === "production"
+        ? "https://api.hotelbeds.com"
+        : "https://api.test.hotelbeds.com"),
     staysnetApiUrl: process.env.STAYSNET_API_URL || "",
     staysnetClientId: process.env.STAYSNET_CLIENT_ID || "",
     staysnetClientSecret: process.env.STAYSNET_CLIENT_SECRET || "",
@@ -145,6 +158,24 @@ export function getMaskedEnvStatusForAdmin() {
       channel: "Canal 01: Omnibees",
       rawValue: cfg.webhookSecret,
       isSecret: true,
+    },
+    {
+      envName: "HOTELBEDS_API_KEY",
+      channel: "Canal 01B: Hotelbeds APItude",
+      rawValue: cfg.hotelbedsApiKey,
+      isSecret: true,
+    },
+    {
+      envName: "HOTELBEDS_SECRET",
+      channel: "Canal 01B: Hotelbeds APItude",
+      rawValue: cfg.hotelbedsSecret,
+      isSecret: true,
+    },
+    {
+      envName: "HOTELBEDS_ENDPOINT_URL",
+      channel: "Canal 01B: Hotelbeds APItude",
+      rawValue: cfg.hotelbedsEndpointUrl,
+      isSecret: false,
     },
     {
       envName: "STAYSNET_CLIENT_ID",

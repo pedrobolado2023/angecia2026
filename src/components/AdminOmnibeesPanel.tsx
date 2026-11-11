@@ -230,6 +230,19 @@ export function AdminOmnibeesPanel({
     error?: string;
   } | null>(null);
 
+  // Estado do teste de conexão Hotelbeds APItude (/api/hotelbeds/status)
+  const [isTestingHotelbeds, setIsTestingHotelbeds] = useState<boolean>(false);
+  const [hotelbedsTestResult, setHotelbedsTestResult] = useState<{
+    ok: boolean;
+    isSimulation?: boolean;
+    environment?: string;
+    status?: string;
+    latencyMs?: number;
+    message?: string;
+    apiKeyMasked?: string;
+    error?: string;
+  } | null>(null);
+
   // Estado para sincronização em lote dos hotéis
   const [syncingHotelId, setSyncingHotelId] = useState<string | null>(null);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<string>(
@@ -379,6 +392,23 @@ export function AdminOmnibeesPanel({
       });
     } finally {
       setIsTestingWebhook(false);
+    }
+  };
+
+  const handleTestHotelbedsConnection = async () => {
+    setIsTestingHotelbeds(true);
+    setHotelbedsTestResult(null);
+    try {
+      const res = await fetch("/api/hotelbeds/status");
+      const data = await res.json();
+      setHotelbedsTestResult(data);
+    } catch {
+      setHotelbedsTestResult({
+        ok: false,
+        error: "Falha ao conectar com o endpoint interno /api/hotelbeds/status.",
+      });
+    } finally {
+      setIsTestingHotelbeds(false);
     }
   };
 
@@ -1367,6 +1397,24 @@ export function AdminOmnibeesPanel({
                     : "Testar Webhook Push ARI (Usando .env)"}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={handleTestHotelbedsConnection}
+                disabled={isTestingHotelbeds}
+                className="py-3 px-5 rounded-xl bg-[#182026] hover:bg-[#2C3842] text-white text-xs font-medium uppercase tracking-[0.12em] transition cursor-pointer flex items-center gap-2 shadow-sm"
+              >
+                <Server
+                  className={`w-4 h-4 text-[#B8863B] ${
+                    isTestingHotelbeds ? "animate-spin" : ""
+                  }`}
+                />
+                <span>
+                  {isTestingHotelbeds
+                    ? "Validando Hotelbeds APItude..."
+                    : "Testar Hotelbeds APItude (Status & SHA-256)"}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -1375,23 +1423,49 @@ export function AdminOmnibeesPanel({
             <div className="bg-white border border-[#E5DEC9] rounded-2xl p-6 shadow-xs">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium">
-                  Diagnóstico Server-to-Omnibees
+                  Diagnóstico dos Canais Hoteleiros
                 </span>
                 <Wifi className="w-4 h-4 text-[#0F5257]" />
               </div>
               <h3 className="font-editorial text-2xl font-normal text-[#182026]">
-                Status do Conector OTA 2014B
+                Conectores Hotelbeds & Omnibees
               </h3>
 
-              {!connectionResult && !webhookTestResult ? (
+              {!connectionResult && !webhookTestResult && !hotelbedsTestResult ? (
                 <div className="mt-4 p-4 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] text-xs text-[#5C646B] leading-relaxed">
-                  Clique em <strong>&ldquo;Testar Pull API Omnibees&rdquo;</strong>{" "}
-                  ou <strong>&ldquo;Testar Webhook Push ARI&rdquo;</strong> ao
+                  Clique em <strong>&ldquo;Testar Hotelbeds APItude&rdquo;</strong>{" "}
+                  ou <strong>&ldquo;Testar Pull API Omnibees&rdquo;</strong> ao
                   lado para disparar o teste diretamente pelo Backend lendo as
-                  chaves do arquivo <code>.env.local</code>.
+                  chaves do arquivo <code>.env.local</code> / Easypanel.
                 </div>
               ) : (
                 <div className="mt-4 space-y-3">
+                  {hotelbedsTestResult && (
+                    <div
+                      className={`p-4 rounded-xl border text-xs space-y-2 ${
+                        hotelbedsTestResult.ok
+                          ? "bg-[#FAF7F2] border-[#0F5257]/40 text-[#182026]"
+                          : "bg-[#B83B2B]/10 border-[#B83B2B]/30 text-[#B83B2B]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-medium">
+                        <span className="text-[#0F5257] flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Hotelbeds APItude: {hotelbedsTestResult.status}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-[#182026] text-white text-[10px]">
+                          {hotelbedsTestResult.latencyMs} ms
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#5C646B] leading-relaxed">
+                        {hotelbedsTestResult.message || hotelbedsTestResult.error}
+                      </p>
+                      <p className="text-[10px] text-[#9A6D28]">
+                        Ambiente: <strong>{hotelbedsTestResult.environment}</strong> • API Key:{" "}
+                        <code>{hotelbedsTestResult.apiKeyMasked}</code>
+                      </p>
+                    </div>
+                  )}
                   {connectionResult && (
                     <div
                       className={`p-4 rounded-xl border text-xs space-y-2 ${

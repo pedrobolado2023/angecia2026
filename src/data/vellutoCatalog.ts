@@ -20,6 +20,7 @@ export interface DestinationCity {
   flightTimeFromOrigins: Record<string, string>; // SP, BSB, GYN, RJ
   landmarks: LandmarkInfo[];
   subAreas: string[];
+  hotelbedsDestinationCode?: string; // Ex: "RIO", "SAO", "SSA", "MCZ", "REC"
 }
 
 export interface RoomCategory {
@@ -63,6 +64,7 @@ export interface CuratedHotel {
   isFlashDeal: boolean;
   flashDealRemainingSeconds: number;
   omnibeesChannelCode: string;
+  hotelbedsCode?: number | string;
   primaryLandmarkDistance: string; // Ex: "A 4 minutos a pé da Praia de São Conrado"
   landmarkDistances: {
     landmarkId?: string;
