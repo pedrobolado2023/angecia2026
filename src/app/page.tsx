@@ -74,9 +74,8 @@ const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
   "campos-monte-verde": "SAO",
   "olimpia-litoral-sp": "SAO",
   "caldas-rio-quente-pirenopolis": "BSB",
-  "florianopolis-balneario": "FLN",
-  "fortaleza-jeri": "FOR",
-  "natal-pipa": "NAT",
+  "balneario-florianopolis-penha": "FLN",
+  "fortaleza-jeri-natal-pipa": "FOR",
 };
 
 export default function HospedeClubApp() {
@@ -306,7 +305,7 @@ export default function HospedeClubApp() {
   };
 
   const fetchLiveHotelbedsHotels = useCallback(
-    async (destinationCode: string = "RIO") => {
+    async (destinationCode: string = "RIO", targetCityId?: string) => {
       setIsHotelbedsLoading(true);
       try {
         const today = new Date();
@@ -325,6 +324,7 @@ export default function HospedeClubApp() {
 
         if (data.ok && data.hotels && data.hotels.length > 0) {
           setHotelsCatalog((prevCatalog) => {
+            const resolvedCityId = targetCityId || selectedCityId;
             // Atualiza os hotéis do catálogo com tarifas reais retornadas pela Hotelbeds
             const updated = prevCatalog.map((h, index) => {
               const liveHotel = data.hotels[index % data.hotels.length];
@@ -411,7 +411,7 @@ export default function HospedeClubApp() {
                   subtitle: `${
                     hbHotel.categoryName || "Hotel Selecionado"
                   } • Tarifa Exclusiva Hóspede Club`,
-                  cityId: selectedCityId,
+                  cityId: resolvedCityId,
                   cityName: hbHotel.destinationName || "Destino Nacional",
                   stateCode: "BR",
                   neighborhood: hbHotel.zoneName || "Área Nobre",
@@ -747,7 +747,7 @@ export default function HospedeClubApp() {
 
     // Consulta disponibilidade na Hotelbeds para o destino selecionado
     const hbCode = CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
-    fetchLiveHotelbedsHotels(hbCode);
+    fetchLiveHotelbedsHotels(hbCode, cityId);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1851,7 +1851,8 @@ export default function HospedeClubApp() {
                 type="button"
                 onClick={() =>
                   fetchLiveHotelbedsHotels(
-                    activeDestinationCity.hotelbedsDestinationCode || "RIO"
+                    activeDestinationCity.hotelbedsDestinationCode || "RIO",
+                    activeDestinationCity.id
                   )
                 }
                 disabled={isHotelbedsLoading}

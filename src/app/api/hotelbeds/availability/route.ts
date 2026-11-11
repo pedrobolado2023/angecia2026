@@ -47,6 +47,13 @@ function enrichHotelsWithClubPricing(hotels: any[]) {
   });
 }
 
+interface AvailabilityCacheItem {
+  timestamp: number;
+  payload: any;
+}
+const availabilityMemoryCache = new Map<string, AvailabilityCacheItem>();
+const AVAILABILITY_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutos
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -55,6 +62,16 @@ export async function GET(request: NextRequest) {
     const destinationCode = searchParams.get("destinationCode") || "RIO";
     const hotelCodesParam = searchParams.get("hotelCodes");
     const hotelCodes = hotelCodesParam ? hotelCodesParam.split(",") : undefined;
+    const forceRefresh = searchParams.get("refresh") === "true";
+
+    const cacheKey = `${destinationCode.toUpperCase()}_${checkIn}_${checkOut}_${(hotelCodes || []).join(",")}`;
+    const cached = availabilityMemoryCache.get(cacheKey);
+    const now = Date.now();
+
+    // Retorna do cache se estiver dentro do TTL e não for um refresh forçado
+    if (!forceRefresh && cached && now - cached.timestamp < AVAILABILITY_CACHE_TTL_MS) {
+      return NextResponse.json(cached.payload);
+    }
 
     const result = await searchHotelbedsAvailability({
       checkIn,
@@ -65,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     const enrichedHotels = enrichHotelsWithClubPricing(result.hotels || []);
 
-    return NextResponse.json({
+    const responsePayload = {
       ok: result.ok,
       isSimulation: result.isSimulation,
       message: result.message,
@@ -74,7 +91,17 @@ export async function GET(request: NextRequest) {
       total: result.total,
       hotels: enrichedHotels,
       rawError: result.rawError,
-    });
+    };
+
+    // Se a API ao vivo retornou com sucesso, armazena no cache
+    if (result.ok && !result.isSimulation && enrichedHotels.length > 0) {
+      availabilityMemoryCache.set(cacheKey, { timestamp: now, payload: responsePayload });
+    } else if (cached && cached.payload && (!result.ok || result.isSimulation)) {
+      // Se a Hotelbeds estourou a cota ou falhou, mas temos cache anterior ao vivo, serve o cache anterior
+      return NextResponse.json(cached.payload);
+    }
+
+    return NextResponse.json(responsePayload);
   } catch (err: unknown) {
     const msg =
       err instanceof Error ? err.message : "Erro ao consultar Hotelbeds";
