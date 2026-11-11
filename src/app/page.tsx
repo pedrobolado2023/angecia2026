@@ -1033,42 +1033,21 @@ export default function HospedeClubApp() {
         </div>
       )}
 
-      {/* TOP BAR SOLAR & ELEGANTE (100% VOLTADA AO CLIENTE — SEM DADOS INTERNOS) */}
+      {/* TOP BAR SOLAR & ELEGANTE (100% VOLTADA AO CLIENTE) */}
       <div className="bg-[#F3EDE2] text-[#5C646B] border-b border-[#E3DACB] text-[11px] py-1.5 px-4 sm:px-6 md:px-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 overflow-x-auto no-scrollbar">
-          {/* Seletor Discreto de Origem por IP */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[#9A6D28] font-medium flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              <span>Partindo de:</span>
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[#0F5257] font-medium">
+              <Sparkles className="w-3 h-3 text-[#B8863B]" />
+              <span>Tarifas Exclusivas de Membro • Disponibilidade Confirmada em Tempo Real</span>
             </span>
-            <div className="flex items-center gap-1">
-              {GEO_ORIGIN_PROFILES.map((geo) => (
-                <button
-                  key={geo.id}
-                  onClick={() => setSelectedGeoOriginId(geo.id)}
-                  className={`px-2.5 py-0.5 rounded-full transition cursor-pointer ${
-                    selectedGeoOriginId === geo.id
-                      ? "text-[#182026] bg-white border border-[#D8CBB8] font-medium shadow-2xs"
-                      : "text-[#5C646B] hover:text-[#182026]"
-                  }`}
-                >
-                  {geo.city}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Informações Exclusivas para o Hóspede / Membro */}
+          {/* Acesso do Membro */}
           <div className="flex items-center gap-3 shrink-0">
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-[#0F5257] font-medium">
-              <Sparkles className="w-3 h-3 text-[#B8863B]" />
-              <span>Tarifas de Membro Verificadas • +3% Cashback no PIX</span>
-            </span>
-            <span className="text-[#182026]/15 hidden sm:inline">|</span>
             <button
               onClick={() => setShowClubModal(true)}
-              className="text-[#9A6D28] font-medium hover:underline transition cursor-pointer flex items-center gap-1"
+              className="text-[#9A6D28] hover:text-[#7A551E] font-medium cursor-pointer flex items-center gap-1"
             >
               <Users className="w-3 h-3 text-[#B8863B]" />
               <span>
@@ -1295,38 +1274,14 @@ export default function HospedeClubApp() {
 
             <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-12 md:py-16 w-full">
               <div className="max-w-2xl">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-[#DFD5C5] text-[10px] uppercase tracking-[0.22em] text-[#9A6D28] font-medium shadow-2xs mb-4">
-                  <Sparkles className="w-3 h-3 text-[#B8863B]" />
-                  <span>Curadoria Privada • Hotelaria Nacional</span>
-                </span>
-
                 <h1 className="font-editorial text-4xl sm:text-5xl md:text-6xl font-normal text-[#182026] leading-[1.12]">
                   A arte de se hospedar no{" "}
                   <span className="italic text-[#B8863B]">extraordinário.</span>
                 </h1>
 
                 <p className="text-sm sm:text-base text-[#465058] mt-4 max-w-xl leading-relaxed font-normal">
-                  Estadias singulares com tarifas secretas negociadas diretamente com os hotéis e resorts mais desejados do Brasil, até{" "}
-                  <span className="text-[#0F5257] font-medium">27% abaixo da tarifa pública</span>.
+                  Estadias singulares com tarifas exclusivas negociadas diretamente com os hotéis e resorts mais desejados do Brasil.
                 </p>
-
-                {/* Seletor Solar de Cenas do Hero */}
-                <div className="flex flex-wrap items-center gap-3 mt-6 text-xs">
-                  {HERO_SCENES.map((scene, idx) => (
-                    <button
-                      key={scene.id}
-                      onClick={() => setHeroSceneIndex(idx)}
-                      className={`px-3 py-1.5 rounded-full border transition cursor-pointer ${
-                        heroSceneIndex === idx
-                          ? "bg-[#182026] border-[#182026] text-white shadow-xs"
-                          : "bg-white/85 border-[#DFD5C5] text-[#5C646B] hover:border-[#B8863B] hover:text-[#182026]"
-                      }`}
-                    >
-                      <span className="text-[#B8863B] font-medium mr-1.5">0{idx + 1}</span>
-                      <span>{scene.location}</span>
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* BARRA DE BUSCA EM BRANCO PURO COM AUTOCOMPLETE DE CIDADE, ESTADO OU HOTEL */}
@@ -1622,15 +1577,15 @@ export default function HospedeClubApp() {
             </div>
           </section>
 
-          {/* SEÇÃO DE INTELIGÊNCIA GEOGRÁFICA POR IP (CARDS CLAROS E ILUMINADOS) */}
+          {/* SEÇÃO DE DESTINOS E COLEÇÕES EXCLUSIVAS */}
           <section className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
               <div>
                 <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
-                  Próximos a {currentGeoProfile.city}
+                  Coleção Exclusiva
                 </span>
                 <h2 className="font-editorial text-3xl sm:text-4xl font-normal text-[#182026]">
-                  {currentGeoProfile.weekendEscapeTitle}
+                  Destinos e Refúgios Mais Desejados
                 </h2>
               </div>
 
@@ -1671,7 +1626,7 @@ export default function HospedeClubApp() {
                       />
                       <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-20">
                         <span className="px-2.5 py-1 rounded-full bg-white/92 backdrop-blur-md text-[#182026] text-[10px] tracking-wider uppercase font-medium shadow-xs">
-                          {city.flightTimeFromOrigins[selectedGeoOriginId]}
+                          {city.stateName || "Brasil"}
                         </span>
                         <span className="px-2.5 py-1 rounded-full bg-[#B83B2B] text-white text-[10px] font-medium shadow-xs">
                           Até -{city.avgSavingsPercent}%
@@ -1823,7 +1778,7 @@ export default function HospedeClubApp() {
                   <span>Voltar aos Destinos</span>
                 </button>
                 <span className="px-3 py-1 rounded-full bg-[#0F5257]/10 text-[#0F5257] text-[11px] font-medium">
-                  {activeDestinationCity.regionTag} • {activeDestinationCity.flightTimeFromOrigins[selectedGeoOriginId]}
+                  {activeDestinationCity.regionTag}
                 </span>
               </div>
 
