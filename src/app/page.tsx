@@ -18,6 +18,8 @@ import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
 import { LuxuryImage } from "@/components/LuxuryImage";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
+import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
+import { MembershipRenewalModal } from "@/components/MembershipRenewalModal";
 import {
   Sparkles,
   MapPin,
@@ -110,6 +112,17 @@ export default function HospedeClubApp() {
   const [memberMarketingOptIn, setMemberMarketingOptIn] = useState<boolean>(true);
   const [clubSavedNotice, setClubSavedNotice] = useState<string | null>(null);
   const [accountDeletedNotice, setAccountDeletedNotice] = useState<string | null>(null);
+
+  // Estados do Novo Sistema de Login / Cadastro de Clientes e Membro VIP
+  const [loggedCustomer, setLoggedCustomer] = useState<LoggedCustomer | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalInitialMode, setAuthModalInitialMode] = useState<"register" | "login">("register");
+  const [authModalCheckoutNotice, setAuthModalCheckoutNotice] = useState<string | undefined>(undefined);
+  const [pendingCheckoutSelection, setPendingCheckoutSelection] = useState<{
+    hotel: CuratedHotel;
+    room: RoomCategory;
+  } | null>(null);
+  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState<boolean>(false);
 
   const [selectedGeoOriginId, setSelectedGeoOriginId] = useState<"SP" | "GYN" | "BSB" | "RJ">("SP");
   const currentGeoProfile = useMemo(
@@ -265,6 +278,72 @@ export default function HospedeClubApp() {
       setIsClubMember(true);
       setShowClubModal(false);
     }
+  };
+
+  // Carrega sessão do cliente via /api/auth/me
+  useEffect(() => {
+    async function checkCustomerSession() {
+      try {
+        const res = await fetch("/api/auth/me");
+        const data = await res.json();
+        if (data.authenticated && data.customer) {
+          setLoggedCustomer(data.customer);
+          setIsClubMember(data.customer.membership?.status !== "EXPIRED");
+          setMemberName(data.customer.fullName);
+          setMemberId(data.customer.id);
+          if (data.customer.address?.city) {
+            setMemberCityOrigin(`${data.customer.address.city} (${data.customer.address.state})`);
+          }
+          const nameParts = data.customer.fullName.trim().split(" ");
+          setPrimaryFirstName(nameParts[0] || "");
+          setPrimaryLastName(nameParts.slice(1).join(" ") || "");
+          setPrimaryEmail(data.customer.email);
+          setPrimaryEmailConfirm(data.customer.email);
+          setPrimaryWhatsapp(data.customer.whatsapp);
+          if (data.customer.cpf) setPrimaryCpf(data.customer.cpf);
+        } else {
+          setIsClubMember(false);
+        }
+      } catch {
+        setIsClubMember(false);
+      }
+    }
+    checkCustomerSession();
+  }, []);
+
+  const handleAuthSuccess = (customer: LoggedCustomer) => {
+    setLoggedCustomer(customer);
+    setIsClubMember(customer.membership?.status !== "EXPIRED");
+    setMemberName(customer.fullName);
+    setMemberId(customer.id);
+    if (customer.address?.city) {
+      setMemberCityOrigin(`${customer.address.city} (${customer.address.state})`);
+    }
+
+    const nameParts = customer.fullName.trim().split(" ");
+    setPrimaryFirstName(nameParts[0] || "");
+    setPrimaryLastName(nameParts.slice(1).join(" ") || "");
+    setPrimaryEmail(customer.email);
+    setPrimaryEmailConfirm(customer.email);
+    setPrimaryWhatsapp(customer.whatsapp);
+    if (customer.cpf) setPrimaryCpf(customer.cpf);
+
+    if (pendingCheckoutSelection) {
+      const { hotel, room } = pendingCheckoutSelection;
+      setPendingCheckoutSelection(null);
+      // Avança diretamente para o checkout da hospedagem selecionada
+      handleDirectCheckoutProceed(hotel, room);
+    }
+  };
+
+  const handleCustomerLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    setLoggedCustomer(null);
+    setIsClubMember(false);
   };
 
   useEffect(() => {
@@ -759,10 +838,7 @@ export default function HospedeClubApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDirectCheckout = (hotel: CuratedHotel, room?: RoomCategory) => {
-    if (hotel.stopSell || hotel.omnibeesAvailableRooms <= 0) {
-      return;
-    }
+  const handleDirectCheckoutProceed = (hotel: CuratedHotel, room?: RoomCategory) => {
     const chosenRoom = room || hotel.rooms[0];
     setSelectedHotelId(hotel.id);
     setSelectedRoomId(chosenRoom.id);
@@ -791,6 +867,26 @@ export default function HospedeClubApp() {
       checkInDate,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDirectCheckout = (hotel: CuratedHotel, room?: RoomCategory) => {
+    if (hotel.stopSell || hotel.omnibeesAvailableRooms <= 0) {
+      return;
+    }
+    const chosenRoom = room || hotel.rooms[0];
+
+    // Exige login/cadastro para concluir a reserva
+    if (!loggedCustomer) {
+      setPendingCheckoutSelection({ hotel, room: chosenRoom });
+      setAuthModalCheckoutNotice(
+        `Para reservar com Tarifa de Membro no ${hotel.name}, faça login ou cadastre-se (com 7 dias VIP grátis).`
+      );
+      setAuthModalInitialMode("register");
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    handleDirectCheckoutProceed(hotel, chosenRoom);
   };
 
   const activeRoomPricing = useMemo(
@@ -1036,17 +1132,47 @@ export default function HospedeClubApp() {
 
           {/* Acesso do Membro */}
           <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => setShowClubModal(true)}
-              className="text-[#9A6D28] hover:text-[#7A551E] font-medium cursor-pointer flex items-center gap-1"
-            >
-              <Users className="w-3 h-3 text-[#B8863B]" />
-              <span>
-                {isClubMember
-                  ? `Olá, ${memberName.split(" ")[0]} (Perfil Membro)`
-                  : "Cadastrar no Hóspede Club"}
-              </span>
-            </button>
+            {loggedCustomer ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowClubModal(true)}
+                  className="text-[#9A6D28] hover:text-[#7A551E] font-medium cursor-pointer flex items-center gap-1.5"
+                >
+                  <Users className="w-3.5 h-3.5 text-[#B8863B]" />
+                  <span>
+                    Olá, {loggedCustomer.fullName.split(" ")[0]}
+                    {loggedCustomer.membership?.status === "TRIAL_ACTIVE" && (
+                      <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[#B8863B]/15 text-[#9A6D28] font-bold">
+                        VIP ({loggedCustomer.membership.daysRemaining}d)
+                      </span>
+                    )}
+                    {loggedCustomer.membership?.status === "EXPIRED" && (
+                      <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[#B83B2B]/15 text-[#B83B2B] font-bold">
+                        Trial Expirado
+                      </span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  onClick={handleCustomerLogout}
+                  className="text-[#5C646B] hover:text-[#182026] text-[11px] cursor-pointer ml-1"
+                  title="Sair da Conta"
+                >
+                  Sair
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setAuthModalInitialMode("register");
+                  setIsAuthModalOpen(true);
+                }}
+                className="text-[#9A6D28] hover:text-[#7A551E] font-medium cursor-pointer flex items-center gap-1"
+              >
+                <Sparkles className="w-3 h-3 text-[#B8863B]" />
+                <span>Cadastrar Membro (7 Dias VIP Grátis)</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1151,28 +1277,41 @@ export default function HospedeClubApp() {
               <span className="hidden md:inline text-[11px]">Salvos ({favoriteIds.length})</span>
             </button>
 
-            <button
-              onClick={() => setShowClubModal(true)}
-              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer border ${
-                isClubMember
-                  ? "bg-[#0F5257] border-[#0F5257] text-white hover:bg-[#146B72] shadow-xs"
-                  : "bg-[#B8863B] border-[#B8863B] text-white"
-              }`}
-            >
-              {isClubMember ? (
-                <>
-                  <Unlock className="w-3 h-3 shrink-0 text-[#FFE599]" />
-                  <span className="hidden sm:inline">Membro Private</span>
-                  <span className="sm:hidden">Membro</span>
-                </>
+            {loggedCustomer ? (
+              loggedCustomer.membership?.status === "EXPIRED" ? (
+                <button
+                  onClick={() => setIsRenewalModalOpen(true)}
+                  className="px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer bg-[#B83B2B] text-white shadow-xs hover:bg-[#962E20]"
+                >
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span className="hidden sm:inline">Renovar R$ 19,90/mês</span>
+                  <span className="sm:hidden">Renovar</span>
+                </button>
               ) : (
-                <>
-                  <Lock className="w-3 h-3 shrink-0" />
-                  <span className="hidden sm:inline">Cadastrar Membro</span>
-                  <span className="sm:hidden">Clube</span>
-                </>
-              )}
-            </button>
+                <button
+                  onClick={() => setShowClubModal(true)}
+                  className="px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer border bg-[#0F5257] border-[#0F5257] text-white shadow-xs"
+                >
+                  <Unlock className="w-3 h-3 shrink-0 text-[#FFE599]" />
+                  <span className="hidden sm:inline">
+                    Membro VIP ({loggedCustomer.membership?.daysRemaining || 7}d)
+                  </span>
+                  <span className="sm:hidden">Membro</span>
+                </button>
+              )
+            ) : (
+              <button
+                onClick={() => {
+                  setAuthModalInitialMode("register");
+                  setIsAuthModalOpen(true);
+                }}
+                className="px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer border bg-[#B8863B] border-[#B8863B] text-white hover:bg-[#9A6D28] shadow-xs"
+              >
+                <Lock className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Entrar / Cadastrar</span>
+                <span className="sm:hidden">Entrar</span>
+              </button>
+            )}
 
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -3178,25 +3317,63 @@ export default function HospedeClubApp() {
           </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-[#5C646B]">
             <button
-              onClick={() => setShowClubModal(true)}
+              onClick={() => {
+                if (loggedCustomer) {
+                  setShowClubModal(true);
+                } else {
+                  setAuthModalInitialMode("register");
+                  setIsAuthModalOpen(true);
+                }
+              }}
               className="hover:text-[#9A6D28] cursor-pointer"
             >
-              Cadastro Hóspede Club
+              {loggedCustomer ? "Meu Perfil de Membro" : "Cadastrar no Hóspede Club"}
             </button>
             <span className="text-[#182026]/15">•</span>
-            <button
-              onClick={() => {
-                setActiveScreen("admin");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              className="inline-flex items-center gap-1.5 text-[#5C646B] hover:text-[#0F5257] cursor-pointer"
-            >
-              <Lock className="w-3 h-3 text-[#9A6D28]" />
-              <span>Portal Gestor (Acesso Restrito)</span>
-            </button>
+            <span className="text-[11px] text-[#5C646B]/70">
+              Ambiente Seguro • SSL 256-bit
+            </span>
           </div>
         </div>
       </footer>
+
+      {/* MODAL OFICIAL DE LOGIN E CADASTRO COM CÓDIGO WHATSAPP */}
+      <CustomerAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          setAuthModalCheckoutNotice(undefined);
+          setPendingCheckoutSelection(null);
+        }}
+        initialMode={authModalInitialMode}
+        checkoutContextNotice={authModalCheckoutNotice}
+        onAuthSuccess={handleAuthSuccess}
+      />
+
+      {/* MODAL DE RENOVAÇÃO DE MEMBRO APÓS OS 7 DIAS (R$ 19,90/MÊS OU POR RESERVA) */}
+      <MembershipRenewalModal
+        isOpen={isRenewalModalOpen}
+        onClose={() => setIsRenewalModalOpen(false)}
+        customerName={loggedCustomer?.fullName || memberName}
+        onSubscribedSuccess={() => {
+          if (loggedCustomer) {
+            setLoggedCustomer({
+              ...loggedCustomer,
+              membership: {
+                status: "SUBSCRIBED",
+                trialStartedAt: loggedCustomer.membership?.trialStartedAt || new Date().toISOString(),
+                trialExpiresAt: loggedCustomer.membership?.trialExpiresAt || new Date().toISOString(),
+                daysRemaining: 30,
+              },
+            });
+            setIsClubMember(true);
+          }
+        }}
+        onBrowseHotels={() => {
+          setActiveScreen("destination");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
     </div>
   );
 }
