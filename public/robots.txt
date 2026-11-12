@@ -4,5 +4,5 @@ Allow: /
 Disallow: /privado
 Disallow: /api/
 
-Sitemap: https://agentesia-frontagencia2026.4nvzqw.easypanel.host/sitemap.xml
+Sitemap: https://hospedeclub.q-aura.com.br/sitemap.xml
 

@@ -438,9 +438,15 @@ export default function HospedeClubApp() {
         if (data.ok && data.hotels && data.hotels.length > 0) {
           setHotelsCatalog((prevCatalog) => {
             const resolvedCityId = targetCityId || selectedCityId;
-            // Atualiza os hotéis do catálogo com tarifas reais retornadas pela Hotelbeds
-            const updated = prevCatalog.map((h, index) => {
-              const liveHotel = data.hotels[index % data.hotels.length];
+            // Cria mapa com os hotéis ao vivo retornados pela Hotelbeds
+            const liveMap = new Map<string, any>();
+            data.hotels.forEach((lh: any) => {
+              if (lh.code) liveMap.set(String(lh.code), lh);
+            });
+
+            // Atualiza os hotéis do catálogo apenas se houver correspondência com o código do hotel
+            const updated = prevCatalog.map((h) => {
+              const liveHotel = h.hotelbedsCode ? liveMap.get(String(h.hotelbedsCode)) : null;
               if (!liveHotel || !liveHotel.hospedeClubPricing) return h;
 
               const net = liveHotel.hospedeClubPricing.netRate || h.netRate;
@@ -474,7 +480,7 @@ export default function HospedeClubApp() {
 
             // Adiciona novos hotéis retornados pelo canal oficial de disponibilidade
             const existingCodes = new Set(
-              prevCatalog.map((h) => String(h.hotelbedsCode || h.id))
+              updated.map((h) => String(h.hotelbedsCode || h.id))
             );
             const newHotelsToAdd: CuratedHotel[] = [];
 
@@ -525,8 +531,8 @@ export default function HospedeClubApp() {
                     hbHotel.categoryName || "Hotel Selecionado"
                   } • Tarifa Exclusiva Hóspede Club`,
                   cityId: resolvedCityId,
-                  cityName: hbHotel.destinationName || "Destino Nacional",
-                  stateCode: "BR",
+                  cityName: hbHotel.destinationName || (resolvedCityId === "rio-de-janeiro" ? "Rio de Janeiro" : "Destino Nacional"),
+                  stateCode: (hbHotel.destinationCode === "RIO" || resolvedCityId === "rio-de-janeiro") ? "RJ" : "BR",
                   neighborhood: hbHotel.zoneName || "Área Nobre",
                   clusterId: "cluster-1",
                   accommodationType: "hotel",
@@ -644,22 +650,31 @@ export default function HospedeClubApp() {
   };
 
   const normalizeForSearch = (str: string) =>
-    str
+    (str || "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
+  const cleanSearchQuery = (str: string) => {
+    let s = normalizeForSearch(str);
+    s = s.replace(
+      /\b(estado\s+do|estado\s+de|estado\s+da|estado|cidade\s+do|cidade\s+de|cidade\s+da|cidade|hoteis\s+em|hoteis\s+no|hoteis\s+na|hotel\s+em|hotel\s+no|hotel\s+na|pousada\s+em|pousadas\s+em|hospedagem\s+em|hospedagens\s+em|hoteis|hotel|pousadas|pousada)\b/gi,
+      " "
+    );
+    return s.replace(/\s+/g, " ").trim();
+  };
+
   const STATE_FULL_NAMES: Record<string, string> = {
-    RJ: "rio de janeiro sudeste",
-    AL: "alagoas nordeste maceio maragogi",
-    PE: "pernambuco nordeste recife porto de galinhas",
-    BA: "bahia nordeste salvador trancoso praia do forte",
-    "CE / RN": "ceara rio grande do norte fortaleza natal jericoacoara pipa nordeste",
-    RS: "rio grande do sul serra gaucha gramado canela bento goncalves sul",
-    "SP / MG": "sao paulo minas gerais campos do jordao monte verde mantiqueira sudeste",
-    SP: "sao paulo litoral norte ilhabela guaruja olimpia sudeste",
-    GO: "goias centro oeste caldas novas rio quente pirenopolis",
-    SC: "santa catarina sul florianopolis jurere balneario camboriu penha",
+    RJ: "rio de janeiro rj sudeste sao conrado copacabana ipanema leblon barra da tijuca buzios angra dos reis estado do rio de janeiro estado de rj",
+    AL: "alagoas al nordeste maceio maragogi sao miguel dos milagres praia de antunes estado de alagoas",
+    PE: "pernambuco pe nordeste recife porto de galinhas carneiros muro alto estado de pernambuco",
+    BA: "bahia ba nordeste salvador trancoso praia do forte arraial d ajuda espelho estado da bahia",
+    "CE / RN": "ceara rn ce rio grande do norte fortaleza natal jericoacoara pipa nordeste",
+    RS: "rio grande do sul rs serra gaucha gramado canela bento goncalves vale dos vinhedos sul estado do rio grande do sul",
+    "SP / MG": "sao paulo sp minas gerais mg campos do jordao monte verde mantiqueira sudeste",
+    SP: "sao paulo sp litoral norte ilhabela guaruja olimpia sudeste estado de sao paulo",
+    GO: "goias go centro oeste caldas novas rio quente pirenopolis estado de goias",
+    SC: "santa catarina sc sul florianopolis jurere balneario camboriu penha estado de santa catarina",
   };
 
   const filteredHotels = useMemo(() => {
@@ -668,12 +683,19 @@ export default function HospedeClubApp() {
       if (selectedClusterId !== "all" && h.clusterId !== selectedClusterId) return false;
       if (accommodationTab !== "all" && h.accommodationType !== accommodationTab) return false;
       if (searchQuery.trim() !== "") {
-        const q = normalizeForSearch(searchQuery.trim());
+        const rawQ = normalizeForSearch(searchQuery.trim());
+        const cleanQ = cleanSearchQuery(searchQuery.trim());
         const stateExpanded = STATE_FULL_NAMES[h.stateCode] || "";
         const haystack = normalizeForSearch(
-          `${h.name} ${h.cityName} ${h.stateCode} ${h.neighborhood} ${h.primaryLandmarkDistance} ${stateExpanded}`
+          `${h.name} ${h.cityName} ${h.stateCode} ${h.neighborhood} ${h.primaryLandmarkDistance} ${stateExpanded} estado de ${h.cityName} estado do ${h.cityName}`
         );
-        if (!haystack.includes(q)) return false;
+
+        const matchesRaw = haystack.includes(rawQ);
+        const matchesClean = cleanQ !== "" && haystack.includes(cleanQ);
+        const words = (cleanQ || rawQ).split(" ").filter((w) => w.length >= 2);
+        const wordsMatch = words.length > 0 && words.every((w) => haystack.includes(w));
+
+        if (!matchesRaw && !matchesClean && !wordsMatch) return false;
       }
       return true;
     });
@@ -691,35 +713,26 @@ export default function HospedeClubApp() {
   const [heroSearchText, setHeroSearchText] = useState<string>("");
 
   const handleExecuteHeroSearch = () => {
-    const query = heroSearchText.trim();
-    if (!query) {
+    const rawQuery = heroSearchText.trim();
+    if (!rawQuery) {
       handleOpenDestination(selectedCityId);
       return;
     }
 
-    const q = normalizeForSearch(query);
+    const q = normalizeForSearch(rawQuery);
+    const cleanQ = cleanSearchQuery(rawQuery);
 
-    // 1. Verifica se corresponde a um hotel específico do catálogo
-    const matchedHotel = hotelsCatalog.find((hotel) => {
-      const stateExpanded = STATE_FULL_NAMES[hotel.stateCode] || "";
-      const haystack = normalizeForSearch(
-        `${hotel.name} ${hotel.cityName} ${hotel.stateCode} ${hotel.neighborhood} ${hotel.accommodationType} ${stateExpanded}`
-      );
-      return haystack.includes(q);
-    });
-
-    if (matchedHotel) {
-      handleOpenHotelDetail(matchedHotel);
-      return;
-    }
-
-    // 2. Verifica se corresponde a uma cidade/destino
+    // 1. PRIMEIRO: Verifica se corresponde a um destino, cidade ou estado (ex: "Rio de Janeiro", "estado do rio de janeiro", "Gramado")
     const matchedCity = DESTINATION_CITIES.find((city) => {
       const stateExpanded = STATE_FULL_NAMES[city.stateCode] || "";
       const haystack = normalizeForSearch(
-        `${city.name} ${city.shortName} ${city.stateCode} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded}`
+        `${city.name} ${city.shortName} ${city.stateCode} ${city.stateName} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded} estado de ${city.stateName} estado do ${city.stateName}`
       );
-      return haystack.includes(q);
+      return (
+        haystack.includes(q) ||
+        (cleanQ !== "" && haystack.includes(cleanQ)) ||
+        (cleanQ !== "" && cleanQ.split(" ").filter((w) => w.length >= 2).every((w) => haystack.includes(w)))
+      );
     });
 
     if (matchedCity) {
@@ -727,12 +740,34 @@ export default function HospedeClubApp() {
       return;
     }
 
-    // 3. Fallback: abre o destino selecionado atualmente
+    // 2. SEGUNDO: Verifica se corresponde a um hotel específico do catálogo pelo nome
+    const matchedHotel = hotelsCatalog.find((hotel) => {
+      const hotelNameNorm = normalizeForSearch(hotel.name);
+      return hotelNameNorm.includes(q) || (cleanQ !== "" && hotelNameNorm.includes(cleanQ));
+    });
+
+    if (matchedHotel) {
+      handleOpenHotelDetail(matchedHotel);
+      return;
+    }
+
+    // 3. TERCEIRO: Se houver hotéis filtrados correspondentes, abre o destino do primeiro hotel
+    if (filteredHotels.length > 0) {
+      const firstHotel = filteredHotels[0];
+      handleOpenDestination(firstHotel.cityId || selectedCityId);
+      return;
+    }
+
+    // 4. Fallback: abre o destino selecionado atualmente
     handleOpenDestination(selectedCityId);
   };
 
   const destinationHotels = useMemo(() => {
-    const byCity = hotelsCatalog.filter((h) => h.cityId === activeDestinationCity.id);
+    const byCity = hotelsCatalog.filter((h) => {
+      if (h.cityId === activeDestinationCity.id) return true;
+      if (h.stateCode === activeDestinationCity.stateCode) return true;
+      return false;
+    });
     const baseList = byCity.length > 0 ? byCity : hotelsCatalog;
     if (selectedLandmarkFilter === "all") return baseList;
     const matching = baseList.filter((h) =>
@@ -1766,6 +1801,139 @@ export default function HospedeClubApp() {
               })}
             </div>
           </section>
+
+          {/* RESULTADOS DA PESQUISA LIVRE NA PÁGINA INICIAL */}
+          {searchQuery.trim() !== "" && !showFavoritesOnly && (
+            <section id="hero-live-search-results" className="bg-[#FAF7F2] border-t border-[#E5DEC9] py-10 px-4 sm:px-6 md:px-8">
+              <div className="max-w-7xl mx-auto">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                  <div>
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
+                      Resultados da Pesquisa
+                    </span>
+                    <h2 className="font-editorial text-2xl sm:text-4xl font-normal text-[#182026]">
+                      {filteredHotels.length} {filteredHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"} para &ldquo;{searchQuery}&rdquo;
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleOpenDestination("rio-de-janeiro")}
+                      className="px-3.5 py-1.5 rounded-full border border-[#D5C7B2] bg-white text-xs text-[#0F5257] font-medium hover:border-[#B8863B] transition cursor-pointer"
+                    >
+                      Ver Catálogo Completo do Rio
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setHeroSearchText("");
+                      }}
+                      className="text-xs text-[#5C646B] hover:text-[#182026] hover:underline cursor-pointer"
+                    >
+                      Limpar busca
+                    </button>
+                  </div>
+                </div>
+
+                {filteredHotels.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
+                    <p className="text-[#182026] font-medium text-sm">
+                      Nenhuma propriedade encontrada para &ldquo;{searchQuery}&rdquo;.
+                    </p>
+                    <p className="text-xs text-[#5C646B]">
+                      Tente pesquisar por &ldquo;Rio de Janeiro&rdquo;, &ldquo;Copacabana&rdquo;, &ldquo;São Conrado&rdquo;, &ldquo;Gramado&rdquo; ou &ldquo;Maceió&rdquo;.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery("Rio de Janeiro");
+                        setHeroSearchText("Rio de Janeiro");
+                        handleOpenDestination("rio-de-janeiro");
+                      }}
+                      className="mt-2 px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium cursor-pointer shadow-xs hover:bg-[#9A6D28] transition"
+                    >
+                      Ver Hotéis no Rio de Janeiro
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredHotels.map((hotel) => {
+                      const pricing = calculateVellutoPricing(
+                        hotel.netRate,
+                        hotel.barRate,
+                        0.15,
+                        hotel.cleaningFee || 0,
+                        hotel.securityDeposit || 0
+                      );
+                      const isFav = favoriteIds.includes(hotel.id);
+                      const isSoldOut = Boolean(hotel.stopSell || hotel.omnibeesAvailableRooms <= 0);
+
+                      return (
+                        <article
+                          key={hotel.id}
+                          className="rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="relative h-52 overflow-hidden">
+                              <LuxuryImage
+                                src={hotel.heroImage}
+                                alt={hotel.name}
+                                fallbackLabel={hotel.name}
+                                className="w-full h-full hover:scale-105 transition duration-700"
+                              />
+                              <div className="absolute top-3.5 right-3.5 z-20">
+                                <button
+                                  onClick={(e) => toggleFavorite(hotel.id, e)}
+                                  className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#182026] hover:text-[#B83B2B] shadow-sm transition cursor-pointer"
+                                  aria-label="Salvar"
+                                >
+                                  <Heart
+                                    className={`w-4 h-4 ${
+                                      isFav ? "fill-[#B83B2B] text-[#B83B2B]" : ""
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                              <div className="absolute bottom-3 left-3 z-20">
+                                <span className="px-2.5 py-1 rounded-full bg-[#182026]/85 backdrop-blur-md text-white text-[10px] font-medium tracking-wide">
+                                  {hotel.stateCode} • {hotel.neighborhood}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="p-5">
+                              <span className="text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium block">
+                                {hotel.cityName}
+                              </span>
+                              <h3 className="font-editorial text-xl font-normal text-[#182026] mt-0.5 leading-snug">
+                                {hotel.name}
+                              </h3>
+                              <p className="text-xs text-[#5C646B] line-clamp-2 mt-1.5">{hotel.subtitle}</p>
+                            </div>
+                          </div>
+                          <div className="px-5 pb-5 pt-3 border-t border-[#F0EAE1] bg-[#FAF7F2] flex items-center justify-between gap-3">
+                            <div className="tabular-price">
+                              <span className="text-xs text-[#5C646B] line-through block">
+                                {formatBRL(pricing.barRate)}
+                              </span>
+                              <span className="text-lg font-semibold text-[#0F5257]">
+                                {formatBRL(pricing.pix.pixPrice)}
+                              </span>
+                              <span className="text-xs text-[#5C646B]"> /noite</span>
+                            </div>
+                            <button
+                              disabled={isSoldOut}
+                              onClick={() => handleOpenHotelDetail(hotel)}
+                              className="py-2 px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white text-xs uppercase tracking-[0.1em] font-medium transition cursor-pointer shadow-xs"
+                            >
+                              Ver Tarifas
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* EXIBE APENAS SE O USUÁRIO CLICAR EM "SALVOS" NO TOPO */}
           {showFavoritesOnly && (

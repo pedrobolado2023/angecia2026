@@ -1,7 +1,7 @@
 import { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://agentesia-frontagencia2026.4nvzqw.easypanel.host";
+  const baseUrl = "https://hospedeclub.q-aura.com.br";
   return [
     {
       url: baseUrl,

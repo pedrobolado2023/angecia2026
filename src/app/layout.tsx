@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const siteUrl = "https://agentesia-frontagencia2026.4nvzqw.easypanel.host";
+const siteUrl = "https://hospedeclub.q-aura.com.br";
 const ogImageUrl =
   "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&h=630&q=85";
 
