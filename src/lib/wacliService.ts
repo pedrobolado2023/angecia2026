@@ -42,7 +42,7 @@ export async function sendWhatsAppVerificationCode(params: {
   const messageText =
     `🌟 *Hóspede Club • Código de Ativação VIP*\n\n` +
     `Olá, *${firstName}*! Seu cadastro no Hóspede Club foi realizado com sucesso.\n\n` +
-    `Para ativar seus *7 dias de acesso exclusivo de Membro* (com tarifas até 28% OFF), informe o código abaixo:\n\n` +
+    `Mandar um *OK* e colocar código informado abaixo no site:\n\n` +
     `🔑 *CÓDIGO: ${params.code}*\n\n` +
     `_Este código expira em 15 minutos. Boas viagens!_`;
 
