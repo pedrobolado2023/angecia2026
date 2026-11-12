@@ -653,6 +653,29 @@ function getSimulatedHotelbedsAvailability(
       facilities: ["Piscina ao ar livre", "Acesso direto à praia", "Spa e Centro de Bem-estar", "Wi-Fi cortesia"],
       rooms: [
         {
+          code: "STD.CD",
+          name: "Apartamento Superior Vista Cidade & São Conrado",
+          rates: [
+            {
+              rateKey: `HB-NACIONAL-${Date.now()}-STD`,
+              rateClass: "NOR",
+              rateType: "BOOKABLE",
+              net: 680.0,
+              sellingRate: 920.0,
+              allotted: 5,
+              paymentType: "AT_WEB",
+              boardCode: "BB",
+              boardName: "Café da Manhã Incluso",
+              cancellationPolicies: [
+                {
+                  amount: 0,
+                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        {
           code: "DBL.LX-1",
           name: "Luxury Double Frente Mar",
           rates: [
@@ -662,7 +685,99 @@ function getSimulatedHotelbedsAvailability(
               rateType: "BOOKABLE",
               net: 811.18,
               sellingRate: 1200.0,
+              allotted: 4,
+              paymentType: "AT_WEB",
+              boardCode: "BB",
+              boardName: "Café da Manhã Incluso",
+              cancellationPolicies: [
+                {
+                  amount: 0,
+                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          code: "EXE.OC",
+          name: "Apartamento Executivo Andar Alto Vista Mar",
+          rates: [
+            {
+              rateKey: `HB-NACIONAL-${Date.now()}-EXE`,
+              rateClass: "NOR",
+              rateType: "BOOKABLE",
+              net: 980.0,
+              sellingRate: 1450.0,
               allotted: 3,
+              paymentType: "AT_WEB",
+              boardCode: "BB",
+              boardName: "Café da Manhã Incluso",
+              cancellationPolicies: [
+                {
+                  amount: 0,
+                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          code: "SUI.JR",
+          name: "Suíte Júnior com Living Integrado",
+          rates: [
+            {
+              rateKey: `HB-NACIONAL-${Date.now()}-JR`,
+              rateClass: "NOR",
+              rateType: "BOOKABLE",
+              net: 1250.0,
+              sellingRate: 1850.0,
+              allotted: 2,
+              paymentType: "AT_WEB",
+              boardCode: "BB",
+              boardName: "Café da Manhã Incluso",
+              cancellationPolicies: [
+                {
+                  amount: 0,
+                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          code: "SUI.MS",
+          name: "Master Suite Borda Infinita (Design Niemeyer)",
+          rates: [
+            {
+              rateKey: `HB-NACIONAL-${Date.now()}-MS`,
+              rateClass: "NOR",
+              rateType: "BOOKABLE",
+              net: 1780.0,
+              sellingRate: 2600.0,
+              allotted: 2,
+              paymentType: "AT_WEB",
+              boardCode: "BB",
+              boardName: "Café da Manhã Incluso",
+              cancellationPolicies: [
+                {
+                  amount: 0,
+                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          code: "SUI.PRE",
+          name: "Suíte Presidencial Panorâmica 360°",
+          rates: [
+            {
+              rateKey: `HB-NACIONAL-${Date.now()}-PRE`,
+              rateClass: "NOR",
+              rateType: "BOOKABLE",
+              net: 2450.0,
+              sellingRate: 3500.0,
+              allotted: 1,
               paymentType: "AT_WEB",
               boardCode: "BB",
               boardName: "Café da Manhã Incluso",

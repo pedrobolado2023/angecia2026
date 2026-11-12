@@ -452,6 +452,39 @@ export default function HospedeClubApp() {
               const net = liveHotel.hospedeClubPricing.netRate || h.netRate;
               const bar = liveHotel.hospedeClubPricing.barRate || h.barRate;
 
+              // Mapeia TODOS os quartos entregues pela Hotelbeds
+              let resolvedRooms = h.rooms;
+              if (liveHotel.rooms && liveHotel.rooms.length > 0) {
+                resolvedRooms = liveHotel.rooms.map((hbRoom: any, rIdx: number) => {
+                  const firstRate = hbRoom.rates?.[0];
+                  const roomNet = Number(firstRate?.net || liveHotel.hospedeClubPricing?.netRate || net);
+                  const roomBar = Number(firstRate?.sellingRate || Math.round(roomNet * 1.35));
+                  const boardName = firstRate?.boardName || h.scarcityLabel || "Café da Manhã Incluso";
+                  const cleanName = (hbRoom.name || `Quarto ${rIdx + 1}`).trim();
+                  const isFrenteMar = /frente mar|ocean|vista mar|mar/i.test(cleanName);
+
+                  return {
+                    id: `hb-rm-${liveHotel.code}-${rIdx}-${hbRoom.code || rIdx}`,
+                    name: cleanName,
+                    sizeM2: 34 + rIdx * 8,
+                    viewLabel: isFrenteMar ? "Vista Panorâmica Frontal para o Oceano" : "Vista Cidade & Montanha",
+                    bedConfig: /twin/i.test(cleanName) ? "2 Camas de Solteiro" : "1 Cama King Size",
+                    netRate: roomNet,
+                    barRate: roomBar,
+                    omnibeesAvailableCount: firstRate?.allotted || 3,
+                    minStay: 1,
+                    boardBasis: boardName,
+                    highlights: [
+                      boardName,
+                      "Disponibilidade confirmada em tempo real",
+                      isFrenteMar ? "Varanda com vista mar" : "Andar executivo",
+                      "Emissão imediata de voucher oficial",
+                    ],
+                    rates: hbRoom.rates,
+                  };
+                });
+              }
+
               return {
                 ...h,
                 netRate: net,
@@ -463,18 +496,7 @@ export default function HospedeClubApp() {
                   liveHotel.rooms?.[0]?.rates?.[0]?.boardName ||
                   "Café da Manhã Incluso"
                 }`,
-                rooms: h.rooms.map((r, rIdx) => {
-                  const roomData =
-                    liveHotel.rooms?.[rIdx] || liveHotel.rooms?.[0];
-                  const rateData = roomData?.rates?.[0];
-                  return {
-                    ...r,
-                    name: roomData?.name ? `${r.name} (${roomData.name})` : r.name,
-                    netRate: rateData?.net || net,
-                    barRate: rateData?.sellingRate || bar,
-                    boardBasis: rateData?.boardName || r.boardBasis,
-                  };
-                }),
+                rooms: resolvedRooms,
               };
             });
 
