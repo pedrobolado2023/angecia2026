@@ -132,23 +132,47 @@ app.post("/send", authMiddleware, async (req, res) => {
   }
 });
 
-// Endpoint de Diagnóstico e Saúde
-app.get("/status", async (req, res) => {
+let linkedJid = null;
+
+// Verifica a autenticação real diretamente no SQLite / wacli doctor
+async function checkAuthStatus() {
   try {
     const { stdout, stderr } = await execAsync("wacli doctor", {
       env: { ...process.env, WACLI_STORE_DIR: STORE_DIR },
     }).catch((e) => ({ stdout: "", stderr: e.message }));
 
+    const doc = (stdout || stderr || "").trim();
+    if (doc.includes("AUTHENTICATED     true") || doc.includes("AUTHENTICATED: true")) {
+      authStatus = "connected";
+      currentQrCode = null;
+      const jidMatch = doc.match(/LINKED_JID\s+([^\s]+)/);
+      if (jidMatch) {
+        linkedJid = jidMatch[1];
+      }
+      return { isAuthenticated: true, doc, linkedJid };
+    }
+    return { isAuthenticated: false, doc, linkedJid: null };
+  } catch {
+    return { isAuthenticated: false, doc: "", linkedJid: null };
+  }
+}
+
+// Endpoint de Diagnóstico e Saúde
+app.get("/status", async (req, res) => {
+  try {
+    const authInfo = await checkAuthStatus();
     const versionCheck = await execAsync("wacli --version", {
       env: { ...process.env, WACLI_STORE_DIR: STORE_DIR },
     }).catch((e) => ({ stdout: "", stderr: e.message }));
 
     res.json({
       status: authStatus,
+      authenticated: authInfo.isAuthenticated,
+      linkedJid: authInfo.linkedJid,
       daemonActive: Boolean(syncProcess),
       storeDir: STORE_DIR,
       wacliVersion: (versionCheck.stdout || versionCheck.stderr || "").trim(),
-      doctor: (stdout || stderr || "OK").trim(),
+      doctor: authInfo.doc,
       hasQr: Boolean(currentQrCode),
     });
   } catch (e) {
@@ -157,7 +181,8 @@ app.get("/status", async (req, res) => {
 });
 
 // Tela Web Simples & Elegante para Escanear o QR Code no Celular
-app.get("/qr", (req, res) => {
+app.get("/qr", async (req, res) => {
+  await checkAuthStatus();
   res.send(`
     <!DOCTYPE html>
     <html lang="pt-BR">
@@ -235,7 +260,7 @@ app.get("/qr", (req, res) => {
         }
         .btn:hover { background: #9A6D28; }
       </style>
-      <meta http-equiv="refresh" content="7">
+      ${authStatus === 'connected' ? '' : '<meta http-equiv="refresh" content="7">'}
     </head>
     <body>
       <div class="card">
@@ -246,7 +271,7 @@ app.get("/qr", (req, res) => {
         <h1>Hóspede Club • WACLI</h1>
         <p>
           ${authStatus === 'connected' 
-            ? 'Seu WhatsApp está autenticado e pronto para disparar confirmações de reservas e códigos VIP!' 
+            ? `Seu WhatsApp (${linkedJid ? '+' + linkedJid.replace('@s.whatsapp.net', '') : 'Conectado'}) está autenticado e pronto para disparar confirmações de reservas e códigos VIP!` 
             : 'No seu WhatsApp, toque em <strong>Aparelhos Conectados &rarr; Conectar um Aparelho</strong> e aponte para o QR Code:'}
         </p>
 
