@@ -38,6 +38,8 @@ export interface HotelbedsRate {
 export interface HotelbedsRoom {
   code: string;
   name: string;
+  heroImage?: string;
+  gallery?: string[];
   rates: HotelbedsRate[];
 }
 
@@ -55,6 +57,76 @@ export interface HotelbedsContentData {
   heroImage?: string;
   gallery: string[];
   facilities?: string[];
+  roomImages?: Record<string, string[]>;
+}
+
+/**
+ * Traduz e normaliza fielmente as nomenclaturas técnicas em inglês da Hotelbeds APItude
+ * para o português brasileiro elegante do Hóspede Club, sem inventar quartos inexistentes.
+ */
+export function translateHotelbedsRoomName(rawName: string): string {
+  if (!rawName) return "Acomodação Selecionada";
+  let name = rawName.trim();
+
+  // Limpa sufixos redundantes de parênteses se houver
+  name = name.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+
+  const rules: [RegExp, string][] = [
+    [/\bDOUBLE\s+LUXURY\s+FRONT\s+OCEAN\b/gi, "Quarto Duplo Luxo Frente Mar"],
+    [/\bLUXURY\s+DOUBLE\s+FRONT\s+OCEAN\b/gi, "Quarto Duplo Luxo Frente Mar"],
+    [/\bDOUBLE\s+LUXURY\s+OCEAN\s+VIEW\b/gi, "Quarto Duplo Luxo Vista Mar"],
+    [/\bDOUBLE\s+DELUXE\s+OCEAN\s+VIEW\b/gi, "Quarto Duplo Deluxe Vista Mar"],
+    [/\bDOUBLE\s+DELUXE\s+SEA\s+VIEW\b/gi, "Quarto Duplo Deluxe Vista Mar"],
+    [/\bSTANDARD\s+DOUBLE\b/gi, "Quarto Duplo Standard"],
+    [/\bDOUBLE\s+STANDARD\b/gi, "Quarto Duplo Standard"],
+    [/\bSUPERIOR\s+DOUBLE\b/gi, "Quarto Duplo Superior"],
+    [/\bDOUBLE\s+SUPERIOR\b/gi, "Quarto Duplo Superior"],
+    [/\bDOUBLE\s+LUXURY\b/gi, "Quarto Duplo Luxo"],
+    [/\bLUXURY\s+DOUBLE\b/gi, "Quarto Duplo Luxo"],
+    [/\bDOUBLE\s+DELUXE\b/gi, "Quarto Duplo Deluxe"],
+    [/\bDELUXE\s+DOUBLE\b/gi, "Quarto Duplo Deluxe"],
+    [/\bJUNIOR\s+SUITE\s+OCEAN\s+VIEW\b/gi, "Suíte Júnior Vista Mar"],
+    [/\bJUNIOR\s+SUITE\b/gi, "Suíte Júnior"],
+    [/\bMASTER\s+SUITE\s+OCEAN\s+VIEW\b/gi, "Suíte Master Vista Mar"],
+    [/\bMASTER\s+SUITE\b/gi, "Suíte Master"],
+    [/\bEXECUTIVE\s+SUITE\b/gi, "Suíte Executiva"],
+    [/\bPRESIDENTIAL\s+SUITE\b/gi, "Suíte Presidencial"],
+    [/\bTWIN\s+LUXURY\b/gi, "Quarto Twin Luxo"],
+    [/\bLUXURY\s+TWIN\b/gi, "Quarto Twin Luxo"],
+    [/\bTWIN\s+DELUXE\b/gi, "Quarto Twin Deluxe"],
+    [/\bDELUXE\s+TWIN\b/gi, "Quarto Twin Deluxe"],
+    [/\bTWIN\s+STANDARD\b/gi, "Quarto Twin Standard"],
+    [/\bSTANDARD\s+TWIN\b/gi, "Quarto Twin Standard"],
+    [/\bTRIPLE\s+DELUXE\b/gi, "Quarto Triplo Deluxe"],
+    [/\bTRIPLE\s+STANDARD\b/gi, "Quarto Triplo Standard"],
+    [/\bSINGLE\s+STANDARD\b/gi, "Quarto Individual Standard"],
+    [/\bSINGLE\s+SUPERIOR\b/gi, "Quarto Individual Superior"],
+    [/\bFRONT\s+OCEAN\b/gi, "Frente Mar"],
+    [/\bOCEAN\s+VIEW\b/gi, "Vista Mar"],
+    [/\bSEA\s+VIEW\b/gi, "Vista Mar"],
+    [/\bCITY\s+VIEW\b/gi, "Vista Cidade"],
+    [/\bGARDEN\s+VIEW\b/gi, "Vista Jardim"],
+    [/\bMOUNTAIN\s+VIEW\b/gi, "Vista Montanha"],
+    [/\bOCEAN\s+FRONT\b/gi, "Frente Mar"],
+    [/\bDOUBLE\b/gi, "Quarto Duplo"],
+    [/\bTWIN\b/gi, "Quarto Twin"],
+    [/\bSINGLE\b/gi, "Quarto Individual"],
+    [/\bTRIPLE\b/gi, "Quarto Triplo"],
+    [/\bSUITE\b/gi, "Suíte"],
+    [/\bDELUXE\b/gi, "Deluxe"],
+    [/\bSTANDARD\b/gi, "Standard"],
+    [/\bSUPERIOR\b/gi, "Superior"],
+    [/\bEXECUTIVE\b/gi, "Executivo"],
+    [/\bLUXURY\b/gi, "Luxo"],
+    [/\bWITH\s+BALCONY\b/gi, "com Varanda"],
+    [/\bBALCONY\b/gi, "Varanda"],
+  ];
+
+  for (const [pattern, replacement] of rules) {
+    name = name.replace(pattern, replacement);
+  }
+
+  return name.replace(/\s+/g, " ").trim();
 }
 
 export interface HotelbedsHotelResult {
@@ -282,9 +354,36 @@ export async function fetchHotelbedsContent(
       const data = await res.json();
       const hotels = data.hotels || (data.hotel ? [data.hotel] : []);
       for (const h of hotels) {
-        const images = (h.images || []).map(
-          (img: any) => `https://photos.hotelbeds.com/giata/bigger/${img.path}`
-        );
+        const rawImages = h.images || [];
+        const genImages: string[] = [];
+        const poolImages: string[] = [];
+        const allImages: string[] = [];
+        const roomImages: Record<string, string[]> = {};
+
+        for (const img of rawImages) {
+          if (!img.path) continue;
+          const fullUrl = `https://photos.hotelbeds.com/giata/bigger/${img.path}`;
+          allImages.push(fullUrl);
+
+          if (img.imageTypeCode === "GEN") {
+            genImages.push(fullUrl);
+          } else if (img.imageTypeCode === "PIS") {
+            poolImages.push(fullUrl);
+          }
+
+          if (img.roomCode) {
+            if (!roomImages[img.roomCode]) {
+              roomImages[img.roomCode] = [];
+            }
+            roomImages[img.roomCode].push(fullUrl);
+          }
+        }
+
+        // Hero image: Prioriza fachada real (GEN), depois piscina (PIS), depois primeira foto disponível
+        const heroImage = genImages[0] || poolImages[0] || allImages[0] || undefined;
+        // Galeria prioritária: Fachada -> Piscina -> Demais fotos do resort/hotel
+        const sortedGallery = Array.from(new Set([...genImages, ...poolImages, ...allImages])).slice(0, 10);
+
         const facilities = (h.facilities || [])
           .map((f: any) => f.description?.content)
           .filter(Boolean)
@@ -298,9 +397,10 @@ export async function fetchHotelbedsContent(
           city: h.city?.content,
           postalCode: h.postalCode,
           coordinates: h.coordinates,
-          heroImage: images[0] || undefined,
-          gallery: images.slice(0, 8),
+          heroImage,
+          gallery: sortedGallery,
           facilities,
+          roomImages,
         };
 
         contentCache.set(h.code, { timestamp: now, data: contentItem });
@@ -416,23 +516,28 @@ export async function searchHotelbedsAvailability(params: {
         address: content?.address,
         postalCode: content?.postalCode,
         facilities: content?.facilities || [],
-        rooms: (h.rooms || []).map((r: any) => ({
-          code: r.code,
-          name: r.name,
-          rates: (r.rates || []).map((rate: any) => ({
-            rateKey: rate.rateKey,
-            rateClass: rate.rateClass,
-            rateType: rate.rateType,
-            net: Number(rate.net || 0),
-            sellingRate: rate.sellingRate ? Number(rate.sellingRate) : undefined,
-            hotelMandatory: rate.hotelMandatory,
-            allotted: rate.allotted,
-            paymentType: rate.paymentType,
-            boardCode: rate.boardCode,
-            boardName: rate.boardName,
-            cancellationPolicies: rate.cancellationPolicies,
-          })),
-        })),
+        rooms: (h.rooms || []).map((r: any) => {
+          const rmImgs = content?.roomImages?.[r.code] || [];
+          return {
+            code: r.code,
+            name: translateHotelbedsRoomName(r.name),
+            heroImage: rmImgs[0] || undefined,
+            gallery: rmImgs,
+            rates: (r.rates || []).map((rate: any) => ({
+              rateKey: rate.rateKey,
+              rateClass: rate.rateClass,
+              rateType: rate.rateType,
+              net: Number(rate.net || 0),
+              sellingRate: rate.sellingRate ? Number(rate.sellingRate) : undefined,
+              hotelMandatory: rate.hotelMandatory,
+              allotted: rate.allotted,
+              paymentType: rate.paymentType,
+              boardCode: rate.boardCode,
+              boardName: rate.boardName,
+              cancellationPolicies: rate.cancellationPolicies,
+            })),
+          };
+        }),
       };
     });
 
@@ -642,19 +747,21 @@ function getSimulatedHotelbedsAvailability(
       minRate: 811.18,
       maxRate: 1250.0,
       currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
+      heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_006.jpg",
       gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_207.jpg",
+        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_006.jpg",
         "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_f_001.jpg",
+        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_008.jpg",
+        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
       ],
       description: "Localizado em São Conrado, de frente para o mar, o icônico Hotel Nacional é tombado pelo patrimônio histórico com arquitetura de Oscar Niemeyer e jardins de Burle Marx.",
       address: "Av. Niemeyer, 769 - São Conrado, Rio de Janeiro",
       facilities: ["Piscina ao ar livre", "Acesso direto à praia", "Spa e Centro de Bem-estar", "Wi-Fi cortesia"],
       rooms: [
         {
-          code: "STD.CD",
-          name: "Apartamento Superior Vista Cidade & São Conrado",
+          code: "DBL.ST",
+          name: "Quarto Duplo Standard",
+          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_148_20251105_164053.jpg",
           rates: [
             {
               rateKey: `HB-NACIONAL-${Date.now()}-STD`,
@@ -677,7 +784,8 @@ function getSimulatedHotelbedsAvailability(
         },
         {
           code: "DBL.LX-1",
-          name: "Luxury Double Frente Mar",
+          name: "Quarto Duplo Luxo Frente Mar",
+          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
           rates: [
             {
               rateKey: `HB-NACIONAL-${Date.now()}-01`,
@@ -699,11 +807,12 @@ function getSimulatedHotelbedsAvailability(
           ],
         },
         {
-          code: "EXE.OC",
-          name: "Apartamento Executivo Andar Alto Vista Mar",
+          code: "DBL.DX-OV",
+          name: "Quarto Duplo Deluxe Vista Mar",
+          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_228_20260720_131739.png",
           rates: [
             {
-              rateKey: `HB-NACIONAL-${Date.now()}-EXE`,
+              rateKey: `HB-NACIONAL-${Date.now()}-DX`,
               rateClass: "NOR",
               rateType: "BOOKABLE",
               net: 980.0,
@@ -722,8 +831,9 @@ function getSimulatedHotelbedsAvailability(
           ],
         },
         {
-          code: "SUI.JR",
-          name: "Suíte Júnior com Living Integrado",
+          code: "JSU.ST",
+          name: "Suíte Júnior",
+          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_126.jpg",
           rates: [
             {
               rateKey: `HB-NACIONAL-${Date.now()}-JR`,
@@ -745,8 +855,9 @@ function getSimulatedHotelbedsAvailability(
           ],
         },
         {
-          code: "SUI.MS",
-          name: "Master Suite Borda Infinita (Design Niemeyer)",
+          code: "SUI.SU-VM",
+          name: "Suíte Master Vista Mar",
+          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_199_20260226_171223.jpeg",
           rates: [
             {
               rateKey: `HB-NACIONAL-${Date.now()}-MS`,
@@ -768,16 +879,17 @@ function getSimulatedHotelbedsAvailability(
           ],
         },
         {
-          code: "SUI.PRE",
-          name: "Suíte Presidencial Panorâmica 360°",
+          code: "TWN.LX-2",
+          name: "Quarto Twin Luxo",
+          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_140.jpg",
           rates: [
             {
-              rateKey: `HB-NACIONAL-${Date.now()}-PRE`,
+              rateKey: `HB-NACIONAL-${Date.now()}-TWN`,
               rateClass: "NOR",
               rateType: "BOOKABLE",
-              net: 2450.0,
-              sellingRate: 3500.0,
-              allotted: 1,
+              net: 850.0,
+              sellingRate: 1250.0,
+              allotted: 3,
               paymentType: "AT_WEB",
               boardCode: "BB",
               boardName: "Café da Manhã Incluso",

@@ -13,6 +13,7 @@ import {
 } from "@/data/vellutoCatalog";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { isValidCPF } from "@/lib/cpfValidator";
+import { translateHotelbedsRoomName } from "@/lib/hotelbeds";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
@@ -460,8 +461,9 @@ export default function HospedeClubApp() {
                   const roomNet = Number(firstRate?.net || liveHotel.hospedeClubPricing?.netRate || net);
                   const roomBar = Number(firstRate?.sellingRate || Math.round(roomNet * 1.35));
                   const boardName = firstRate?.boardName || h.scarcityLabel || "Café da Manhã Incluso";
-                  const cleanName = (hbRoom.name || `Quarto ${rIdx + 1}`).trim();
+                  const cleanName = translateHotelbedsRoomName(hbRoom.name || `Quarto ${rIdx + 1}`);
                   const isFrenteMar = /frente mar|ocean|vista mar|mar/i.test(cleanName);
+                  const roomHeroImage = hbRoom.heroImage || h.rooms?.[rIdx]?.heroImage || liveHotel.heroImage || h.heroImage;
 
                   return {
                     id: `hb-rm-${liveHotel.code}-${rIdx}-${hbRoom.code || rIdx}`,
@@ -480,6 +482,8 @@ export default function HospedeClubApp() {
                       isFrenteMar ? "Varanda com vista mar" : "Andar executivo",
                       "Emissão imediata de voucher oficial",
                     ],
+                    heroImage: roomHeroImage,
+                    gallery: hbRoom.gallery || (roomHeroImage ? [roomHeroImage] : []),
                     rates: hbRoom.rates,
                   };
                 });
@@ -597,27 +601,34 @@ export default function HospedeClubApp() {
                         hbHotel.rooms?.[0]?.rates?.[0]?.boardName || "Café da manhã incluso",
                         "Reserva confirmada com emissão imediata de voucher",
                       ],
-                  rooms: (hbHotel.rooms || []).map((r: any, rIdx: number) => ({
-                    id: `hb-rm-${hbHotel.code}-${rIdx}`,
-                    name: r.name || "Quarto Executivo Superior",
-                    sizeM2: 38 + rIdx * 12,
-                    viewLabel: "Vista Panorâmica",
-                    bedConfig: "1 Cama King Size ou 2 Camas de Solteiro",
-                    netRate:
-                      r.rates?.[0]?.net || hbHotel.hospedeClubPricing.netRate,
-                    barRate:
-                      r.rates?.[0]?.sellingRate ||
-                      hbHotel.hospedeClubPricing.barRate,
-                    omnibeesAvailableCount: r.rates?.[0]?.allotted || 2,
-                    minStay: 1,
-                    boardBasis:
-                      r.rates?.[0]?.boardName || "Café da Manhã Incluso",
-                    highlights: [
-                      "Ar condicionado",
-                      "Wi-Fi cortesia de alta velocidade",
-                      "Banheiro privativo e amenidades",
-                    ],
-                  })),
+                  rooms: (hbHotel.rooms || []).map((r: any, rIdx: number) => {
+                    const cleanName = translateHotelbedsRoomName(r.name || "Quarto Executivo Superior");
+                    const rmHero = r.heroImage || (hbHotel.gallery && hbHotel.gallery[rIdx % hbHotel.gallery.length]) || heroImage;
+                    return {
+                      id: `hb-rm-${hbHotel.code}-${rIdx}`,
+                      name: cleanName,
+                      sizeM2: 38 + rIdx * 12,
+                      viewLabel: /mar|ocean/i.test(cleanName) ? "Vista Mar" : "Vista Panorâmica",
+                      bedConfig: /twin/i.test(cleanName) ? "2 Camas de Solteiro" : "1 Cama King Size",
+                      netRate:
+                        r.rates?.[0]?.net || hbHotel.hospedeClubPricing.netRate,
+                      barRate:
+                        r.rates?.[0]?.sellingRate ||
+                        hbHotel.hospedeClubPricing.barRate,
+                      omnibeesAvailableCount: r.rates?.[0]?.allotted || 2,
+                      minStay: 1,
+                      boardBasis:
+                        r.rates?.[0]?.boardName || "Café da Manhã Incluso",
+                      highlights: [
+                        r.rates?.[0]?.boardName || "Café da Manhã Incluso",
+                        "Confirmação imediata",
+                        "Emissão de voucher oficial",
+                      ],
+                      heroImage: rmHero,
+                      gallery: r.gallery || (rmHero ? [rmHero] : []),
+                      rates: r.rates,
+                    };
+                  }),
                 });
               }
             });
@@ -2377,27 +2388,43 @@ export default function HospedeClubApp() {
               );
               const card12x = roomPricing.creditCard.installments[11];
               const roomSoldOut = room.omnibeesAvailableCount <= 0 || Boolean(selectedHotel.stopSell);
+              const roomPhoto = room.heroImage || selectedHotel.heroImage;
 
               return (
                 <div
                   key={room.id}
-                  className="p-4 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] hover:border-[#B8863B] shadow-xs transition grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-center"
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E5DEC9] hover:border-[#B8863B] shadow-xs transition grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-center"
                 >
-                  <div className="lg:col-span-5">
-                    <span className="text-[11px] uppercase tracking-[0.15em] text-[#9A6D28] font-medium block">
-                      {room.sizeM2} m² • {room.viewLabel}
+                  {/* Foto Real da Acomodação */}
+                  <div className="lg:col-span-3 relative h-48 sm:h-52 lg:h-36 rounded-xl overflow-hidden bg-[#FAF7F2] border border-[#EAE3D5] shrink-0 group/rm">
+                    <LuxuryImage
+                      src={roomPhoto}
+                      alt={room.name}
+                      fallbackLabel={room.name}
+                      priority={false}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover/rm:scale-105"
+                    />
+                    <div className="absolute top-2 left-2 z-20 bg-[#182026]/85 backdrop-blur-xs px-2 py-0.5 rounded-md text-[10px] text-white font-medium">
+                      {room.sizeM2} m²
+                    </div>
+                  </div>
+
+                  {/* Informações da Suíte */}
+                  <div className="lg:col-span-4">
+                    <span className="text-[10px] sm:text-[11px] uppercase tracking-[0.14em] text-[#9A6D28] font-semibold block">
+                      {room.viewLabel}
                     </span>
-                    <h3 className="font-editorial text-xl sm:text-2xl font-normal text-[#182026] mt-0.5">
+                    <h3 className="font-editorial text-lg sm:text-xl font-normal text-[#182026] mt-0.5">
                       {room.name}
                     </h3>
                     <p className="text-xs text-[#5C646B] mt-1">
                       {room.bedConfig} • {room.boardBasis}
                     </p>
-                    <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-3">
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
                       {room.highlights.map((h, i) => (
                         <span
                           key={i}
-                          className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EAE3D5] text-[#465058]"
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EAE3D5] text-[#465058]"
                         >
                           {h}
                         </span>
@@ -2405,43 +2432,45 @@ export default function HospedeClubApp() {
                     </div>
                   </div>
 
-                  <div className="lg:col-span-4 grid grid-cols-2 gap-2 sm:gap-3 p-3.5 sm:p-4 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] tabular-price">
-                    <div className="border-r border-[#E2D9C8] pr-2 sm:pr-3">
-                      <span className="text-[10px] uppercase tracking-wider text-[#5C646B] block">
+                  {/* Tarifas */}
+                  <div className="lg:col-span-3 grid grid-cols-2 gap-2 p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] tabular-price">
+                    <div className="border-r border-[#E2D9C8] pr-2">
+                      <span className="text-[9px] uppercase tracking-wider text-[#5C646B] block">
                         Tarifa Oficial
                       </span>
-                      <span className="text-base sm:text-lg text-[#B83B2B] line-through block mt-0.5">
+                      <span className="text-sm sm:text-base text-[#B83B2B] line-through block mt-0.5">
                         {formatBRL(roomPricing.barRate)}
                       </span>
                     </div>
 
                     <div className="pl-1">
-                      <span className="text-[10px] uppercase tracking-wider text-[#9A6D28] font-medium block">
+                      <span className="text-[9px] uppercase tracking-wider text-[#9A6D28] font-medium block">
                         Tarifa Membro
                       </span>
-                      <span className="text-lg sm:text-xl font-semibold text-[#0F5257] block mt-0.5">
+                      <span className="text-base sm:text-lg font-semibold text-[#0F5257] block mt-0.5">
                         {formatBRL(roomPricing.pix.pixPrice)}
                       </span>
-                      <span className="text-[11px] text-[#0F5257] font-medium block">
+                      <span className="text-[10px] text-[#0F5257] font-medium block">
                         -{formatBRL(roomPricing.pix.savingsVsBar)}/noite
                       </span>
                     </div>
                   </div>
 
-                  <div className="lg:col-span-3 flex flex-col justify-end">
+                  {/* CTA Selecionar */}
+                  <div className="lg:col-span-2 flex flex-col justify-center">
                     <button
                       disabled={roomSoldOut}
                       onClick={() => handleDirectCheckout(selectedHotel, room)}
-                      className={`w-full min-h-[44px] py-3 px-5 rounded-xl font-medium text-xs uppercase tracking-[0.12em] transition flex items-center justify-center gap-2 ${
+                      className={`w-full min-h-[44px] py-2.5 px-3 rounded-xl font-medium text-xs uppercase tracking-[0.1em] transition flex items-center justify-center gap-1.5 ${
                         roomSoldOut
                           ? "bg-stone-200 text-stone-500 cursor-not-allowed"
                           : "bg-[#B8863B] hover:bg-[#9A6D28] text-white shadow-xs cursor-pointer"
                       }`}
                     >
-                      <span>{roomSoldOut ? "Indisponível" : "Selecionar Suíte"}</span>
-                      {!roomSoldOut && <ChevronRight className="w-4 h-4" />}
+                      <span>{roomSoldOut ? "Indisponível" : "Selecionar"}</span>
+                      {!roomSoldOut && <ChevronRight className="w-3.5 h-3.5" />}
                     </button>
-                    <span className="text-[11px] text-center text-[#5C646B] mt-1.5 tabular-price">
+                    <span className="text-[10px] text-center text-[#5C646B] mt-1 tabular-price block">
                       ou 12x de {formatBRLCents(card12x.installmentValue)}
                     </span>
                   </div>
