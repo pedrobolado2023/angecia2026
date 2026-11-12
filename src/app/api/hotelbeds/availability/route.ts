@@ -60,11 +60,13 @@ export async function GET(request: NextRequest) {
     const checkIn = searchParams.get("checkIn") || "2026-11-20";
     const checkOut = searchParams.get("checkOut") || "2026-11-22";
     const destinationCode = searchParams.get("destinationCode") || "RIO";
+    const adults = Math.max(1, Number(searchParams.get("adults") || "2"));
+    const children = Math.max(0, Number(searchParams.get("children") || "0"));
     const hotelCodesParam = searchParams.get("hotelCodes");
     const hotelCodes = hotelCodesParam ? hotelCodesParam.split(",") : undefined;
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    const cacheKey = `${destinationCode.toUpperCase()}_${checkIn}_${checkOut}_${(hotelCodes || []).join(",")}`;
+    const cacheKey = `${destinationCode.toUpperCase()}_${checkIn}_${checkOut}_${adults}_${children}_${(hotelCodes || []).join(",")}`;
     const cached = availabilityMemoryCache.get(cacheKey);
     const now = Date.now();
 
@@ -78,6 +80,7 @@ export async function GET(request: NextRequest) {
       checkOut,
       destinationCode,
       hotelCodes,
+      occupancies: [{ rooms: 1, adults, children }],
     });
 
     const enrichedHotels = enrichHotelsWithClubPricing(result.hotels || []);

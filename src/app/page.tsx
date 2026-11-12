@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Star,
   Plane,
   Compass,
@@ -138,7 +139,28 @@ export default function HospedeClubApp() {
 
   const [checkInDate, setCheckInDate] = useState<string>("2026-11-13");
   const [nightsCount, setNightsCount] = useState<number>(1);
-  const [guestsCount, setGuestsCount] = useState<number>(2);
+  const [adultsCount, setAdultsCount] = useState<number>(2);
+  const [childrenCount, setChildrenCount] = useState<number>(0);
+  const [infantsCount, setInfantsCount] = useState<number>(0);
+  const [isGuestsSelectorOpen, setIsGuestsSelectorOpen] = useState<boolean>(false);
+  const guestsSelectorContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const totalGuestsCount = useMemo(
+    () => adultsCount + childrenCount + infantsCount,
+    [adultsCount, childrenCount, infantsCount]
+  );
+
+  const guestsSummaryLabel = useMemo(() => {
+    const parts: string[] = [];
+    parts.push(`${adultsCount} ${adultsCount === 1 ? "Adulto" : "Adultos"}`);
+    if (childrenCount > 0) {
+      parts.push(`${childrenCount} ${childrenCount === 1 ? "Criança" : "Crianças"}`);
+    }
+    if (infantsCount > 0) {
+      parts.push(`${infantsCount} ${infantsCount === 1 ? "Bebê" : "Bebês"}`);
+    }
+    return parts.join(", ");
+  }, [adultsCount, childrenCount, infantsCount]);
 
   const [heroSceneIndex, setHeroSceneIndex] = useState<number>(0);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number>(0);
@@ -359,6 +381,19 @@ export default function HospedeClubApp() {
     }
   }, []);
 
+  useEffect(() => {
+    const handleClickOutsideGuests = (event: MouseEvent) => {
+      if (
+        guestsSelectorContainerRef.current &&
+        !guestsSelectorContainerRef.current.contains(event.target as Node)
+      ) {
+        setIsGuestsSelectorOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutsideGuests);
+    return () => document.removeEventListener("mousedown", handleClickOutsideGuests);
+  }, []);
+
   const toggleFavorite = (hotelId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setFavoriteIds((prev) => {
@@ -394,7 +429,7 @@ export default function HospedeClubApp() {
           .split("T")[0];
 
         const res = await fetch(
-          `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}`
+          `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}&adults=${adultsCount}&children=${childrenCount}`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -578,7 +613,7 @@ export default function HospedeClubApp() {
         setIsHotelbedsLoading(false);
       }
     },
-    [selectedCityId]
+    [selectedCityId, adultsCount, childrenCount]
   );
 
   // Sincroniza tarifas com a Hotelbeds automaticamente ao abrir a página
@@ -758,7 +793,10 @@ export default function HospedeClubApp() {
         destinationName: `${matchedCity.name} (${matchedCity.stateCode})`,
         checkInDate,
         nights: nightsCount,
-        guests: guestsCount,
+        guests: totalGuestsCount,
+        adults: adultsCount,
+        children: childrenCount,
+        infants: infantsCount,
       });
     }
     setSelectedLandmarkFilter("all");
@@ -947,7 +985,10 @@ export default function HospedeClubApp() {
           hotelId: selectedHotel.id,
           roomId: selectedRoom.id,
           nights: nightsCount,
-          guests: guestsCount,
+          guests: totalGuestsCount,
+          adults: adultsCount,
+          children: childrenCount,
+          infants: infantsCount,
           checkInDate,
           paymentModality: paymentMethod === "pix" ? "PIX" : "CARD",
           installments: selectedInstallments,
@@ -1444,20 +1485,148 @@ export default function HospedeClubApp() {
                     </div>
                   </div>
 
-                  <div className="lg:col-span-2 pb-2 sm:pb-0">
+                  <div
+                    ref={guestsSelectorContainerRef}
+                    className="relative lg:col-span-2 pb-2 sm:pb-0"
+                  >
                     <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium mb-1.5">
                       Hóspedes
                     </label>
-                    <select
-                      value={guestsCount}
-                      onChange={(e) => setGuestsCount(Number(e.target.value))}
-                      className="bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border border-[#E2D9C8] cursor-pointer w-full"
+
+                    {/* Botão Gatilho do Seletor */}
+                    <button
+                      type="button"
+                      onClick={() => setIsGuestsSelectorOpen(!isGuestsSelectorOpen)}
+                      className={`w-full bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border flex items-center justify-between gap-1 transition cursor-pointer text-left ${
+                        isGuestsSelectorOpen
+                          ? "border-[#B8863B] bg-white ring-2 ring-[#B8863B]/15"
+                          : "border-[#E2D9C8] hover:border-[#B8863B]/70"
+                      }`}
                     >
-                      <option value={1} className="bg-white">1 Hóspede</option>
-                      <option value={2} className="bg-white">2 Hóspedes</option>
-                      <option value={4} className="bg-white">Família (4)</option>
-                      <option value={6} className="bg-white">Villa (6+)</option>
-                    </select>
+                      <span className="truncate font-medium text-xs">
+                        {guestsSummaryLabel}
+                      </span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-[#5C646B] shrink-0 transition-transform duration-200 ${
+                          isGuestsSelectorOpen ? "rotate-180 text-[#B8863B]" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {/* POPOVER SELETOR DE ADULTOS, CRIANÇAS E INFANTIL */}
+                    {isGuestsSelectorOpen && (
+                      <div className="absolute right-0 sm:left-0 sm:right-auto w-[290px] sm:w-[320px] top-full mt-2 z-50 bg-white border border-[#D5C7B2] rounded-2xl shadow-[0_20px_50px_rgba(24,32,38,0.18)] p-4 space-y-3.5">
+                        <div className="pb-2 border-b border-[#F0EAE0] flex items-center justify-between">
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-semibold">
+                            Composição dos Hóspedes
+                          </span>
+                          <span className="text-xs text-[#5C646B]">
+                            Total: <strong className="text-[#182026]">{totalGuestsCount}</strong>
+                          </span>
+                        </div>
+
+                        {/* 1. ADULTOS */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-xs font-semibold text-[#182026] block">Adultos</span>
+                            <span className="text-[10px] text-[#5C646B] block">A partir de 13 anos</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={adultsCount <= 1}
+                              onClick={() => setAdultsCount((prev) => Math.max(1, prev - 1))}
+                              className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
+                            >
+                              -
+                            </button>
+                            <span className="w-5 text-center text-xs font-semibold text-[#182026] tabular-price">
+                              {adultsCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={adultsCount >= 10}
+                              onClick={() => setAdultsCount((prev) => Math.min(10, prev + 1))}
+                              className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 2. CRIANÇAS */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F8F5EE]">
+                          <div>
+                            <span className="text-xs font-semibold text-[#182026] block">Crianças</span>
+                            <span className="text-[10px] text-[#5C646B] block">3 a 12 anos</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={childrenCount <= 0}
+                              onClick={() => setChildrenCount((prev) => Math.max(0, prev - 1))}
+                              className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
+                            >
+                              -
+                            </button>
+                            <span className="w-5 text-center text-xs font-semibold text-[#182026] tabular-price">
+                              {childrenCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={childrenCount >= 6}
+                              onClick={() => setChildrenCount((prev) => Math.min(6, prev + 1))}
+                              className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 3. BEBÊS / INFANTIL */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F8F5EE]">
+                          <div>
+                            <span className="text-xs font-semibold text-[#182026] block">Bebês / Infantil</span>
+                            <span className="text-[10px] text-[#5C646B] block">0 a 2 anos (berço / cortesia)</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={infantsCount <= 0}
+                              onClick={() => setInfantsCount((prev) => Math.max(0, prev - 1))}
+                              className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
+                            >
+                              -
+                            </button>
+                            <span className="w-5 text-center text-xs font-semibold text-[#182026] tabular-price">
+                              {infantsCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={infantsCount >= 4}
+                              onClick={() => setInfantsCount((prev) => Math.min(4, prev + 1))}
+                              className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* AÇÃO CONCLUIR */}
+                        <div className="pt-2 border-t border-[#F0EAE0] flex items-center justify-between">
+                          <span className="text-[11px] text-[#5C646B]">
+                            {adultsCount} ad • {childrenCount} cri • {infantsCount} inf
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsGuestsSelectorOpen(false)}
+                            className="px-3.5 py-1.5 rounded-lg bg-[#B8863B] hover:bg-[#9A6D28] text-white text-xs font-medium cursor-pointer transition"
+                          >
+                            Concluir
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="sm:col-span-2 lg:col-span-3">
@@ -2696,7 +2865,7 @@ export default function HospedeClubApp() {
                   {selectedHotel.name}
                 </h3>
                 <p className="text-xs text-[#5C646B] mt-0.5">
-                  {selectedRoom.name} • {nightsCount} Noites
+                  {selectedRoom.name} • {nightsCount} Noites • {guestsSummaryLabel}
                 </p>
 
                 <div className="my-5 pt-4 border-t border-[#EAE3D5] space-y-2.5 text-xs tabular-price">
