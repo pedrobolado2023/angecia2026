@@ -135,15 +135,21 @@ app.post("/send", authMiddleware, async (req, res) => {
 // Endpoint de Diagnóstico e Saúde
 app.get("/status", async (req, res) => {
   try {
-    const { stdout } = await execAsync("wacli doctor", {
+    const { stdout, stderr } = await execAsync("wacli doctor", {
       env: { ...process.env, WACLI_STORE_DIR: STORE_DIR },
-    }).catch((e) => ({ stdout: e.message }));
+    }).catch((e) => ({ stdout: "", stderr: e.message }));
+
+    const versionCheck = await execAsync("wacli --version", {
+      env: { ...process.env, WACLI_STORE_DIR: STORE_DIR },
+    }).catch((e) => ({ stdout: "", stderr: e.message }));
 
     res.json({
       status: authStatus,
       daemonActive: Boolean(syncProcess),
       storeDir: STORE_DIR,
-      doctor: stdout ? stdout.trim() : "OK",
+      wacliVersion: (versionCheck.stdout || versionCheck.stderr || "").trim(),
+      doctor: (stdout || stderr || "OK").trim(),
+      hasQr: Boolean(currentQrCode),
     });
   } catch (e) {
     res.json({ status: authStatus, error: e.message });
@@ -260,10 +266,67 @@ app.get("/qr", (req, res) => {
         <div>
           <a href="/qr" class="btn">Atualizar Status</a>
         </div>
+
+        ${
+          authStatus !== 'connected'
+            ? `<div style="margin-top:24px;padding-top:20px;border-top:1px solid #283747;text-align:left;">
+                 <h2 style="font-size:12px;color:#D4AF37;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.06em;">Conectar por Número de Telefone</h2>
+                 <p style="font-size:11px;color:#8B98A5;margin:0 0 10px 0;">Se preferir não escanear com a câmera, digite seu WhatsApp (com DDI e DDD) para receber o código de 8 dígitos:</p>
+                 <form onsubmit="event.preventDefault(); pairPhone();" style="display:flex;gap:6px;">
+                   <input id="phoneInput" type="text" placeholder="Ex: 5511999999999" style="flex:1;background:#0B0F12;border:1px solid #334455;color:#FFF;padding:8px 10px;border-radius:8px;font-size:11px;">
+                   <button type="submit" style="background:#B8863B;color:#FFF;border:none;padding:8px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">Gerar Código</button>
+                 </form>
+                 <div id="pairResult" style="margin-top:8px;font-size:12px;color:#4ADE80;font-weight:600;"></div>
+               </div>
+               <script>
+                 async function pairPhone() {
+                   const phone = document.getElementById('phoneInput').value;
+                   const resDiv = document.getElementById('pairResult');
+                   resDiv.innerText = 'Solicitando código ao WhatsApp...';
+                   try {
+                     const res = await fetch('/pair', {
+                       method: 'POST',
+                       headers: { 'Content-Type': 'application/json' },
+                       body: JSON.stringify({ phone })
+                     });
+                     const data = await res.json();
+                     if (data.success) {
+                       resDiv.innerHTML = 'Código: <strong style="font-size:16px;letter-spacing:2px;color:#FBBF24;">' + data.code + '</strong><br><span style="font-size:10px;color:#8B98A5;">No WhatsApp: Aparelhos Conectados &rarr; Conectar com número de telefone.</span>';
+                     } else {
+                       resDiv.innerText = 'Erro: ' + (data.error || 'Falha ao gerar código');
+                     }
+                   } catch(e) {
+                     resDiv.innerText = 'Erro de comunicação: ' + e.message;
+                   }
+                 }
+               </script>`
+            : ''
+        }
       </div>
     </body>
     </html>
   `);
+});
+
+// Endpoint para pareamento via número de telefone (Código de 8 dígitos)
+app.post("/pair", async (req, res) => {
+  const phone = (req.body.phone || "").replace(/\D/g, "");
+  if (!phone || phone.length < 10) {
+    return res.status(400).json({ error: "Informe um telefone válido com DDD (ex: 5511999999999)" });
+  }
+  const cleanPhone = phone.startsWith("55") ? `+${phone}` : `+55${phone}`;
+  try {
+    console.log(`[WACLI PAIR] Solicitando pareamento por código para ${cleanPhone}...`);
+    const { stdout, stderr } = await execAsync(
+      `wacli auth --phone "${cleanPhone}"`,
+      { env: { ...process.env, WACLI_STORE_DIR: STORE_DIR }, timeout: 30000 }
+    );
+    const output = (stdout || stderr || "").trim();
+    return res.json({ success: true, code: output });
+  } catch (err) {
+    console.error("[WACLI PAIR ERROR]", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Inicia o servidor HTTP
