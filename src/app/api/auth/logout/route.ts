@@ -9,3 +9,4 @@ export async function POST() {
   response.cookies.delete("hospede_customer_session");
   return response;
 }
+

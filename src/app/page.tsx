@@ -649,96 +649,49 @@ export default function HospedeClubApp() {
   );
 
   // =========================================================================
-  // BUSCA INTELIGENTE (AUTOCOMPLETE) DE CIDADE, ESTADO OU HOTEL NO HERO
+  // BUSCA INTELIGENTE DE CIDADE, ESTADO OU HOTEL NO HERO
   // =========================================================================
-  const heroSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const heroSearchInputRef = useRef<HTMLInputElement | null>(null);
-  const [heroSearchText, setHeroSearchText] = useState<string>(
-    `${DESTINATION_CITIES[0].name} (${DESTINATION_CITIES[0].stateCode})`
-  );
-  const [isTypingHeroSearch, setIsTypingHeroSearch] = useState<boolean>(false);
-  const [isHeroDropdownOpen, setIsHeroDropdownOpen] = useState<boolean>(false);
-  const [selectedHeroHotelId, setSelectedHeroHotelId] = useState<string | null>(null);
+  const [heroSearchText, setHeroSearchText] = useState<string>("");
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        heroSearchContainerRef.current &&
-        !heroSearchContainerRef.current.contains(event.target as Node)
-      ) {
-        setIsHeroDropdownOpen(false);
-        setIsTypingHeroSearch(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const handleExecuteHeroSearch = () => {
+    const query = heroSearchText.trim();
+    if (!query) {
+      handleOpenDestination(selectedCityId);
+      return;
+    }
 
-  const heroMatchingCities = useMemo(() => {
-    const q = isTypingHeroSearch ? normalizeForSearch(heroSearchText.trim()) : "";
-    if (!q) return DESTINATION_CITIES;
-    return DESTINATION_CITIES.filter((city) => {
-      const stateExpanded = STATE_FULL_NAMES[city.stateCode] || "";
-      const haystack = normalizeForSearch(
-        `${city.name} ${city.stateCode} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded}`
-      );
-      return haystack.includes(q);
-    });
-  }, [heroSearchText, isTypingHeroSearch]);
+    const q = normalizeForSearch(query);
 
-  const heroMatchingHotels = useMemo(() => {
-    const q = isTypingHeroSearch ? normalizeForSearch(heroSearchText.trim()) : "";
-    if (!q) return hotelsCatalog;
-    return hotelsCatalog.filter((hotel) => {
+    // 1. Verifica se corresponde a um hotel específico do catálogo
+    const matchedHotel = hotelsCatalog.find((hotel) => {
       const stateExpanded = STATE_FULL_NAMES[hotel.stateCode] || "";
       const haystack = normalizeForSearch(
         `${hotel.name} ${hotel.cityName} ${hotel.stateCode} ${hotel.neighborhood} ${hotel.accommodationType} ${stateExpanded}`
       );
       return haystack.includes(q);
     });
-  }, [hotelsCatalog, heroSearchText, isTypingHeroSearch]);
 
-  const handleSelectHeroCity = (city: (typeof DESTINATION_CITIES)[number]) => {
-    setSelectedCityId(city.id);
-    setSelectedHeroHotelId(null);
-    setHeroSearchText(`${city.name} (${city.stateCode})`);
-    setIsTypingHeroSearch(false);
-    setIsHeroDropdownOpen(false);
-  };
-
-  const handleSelectHeroHotel = (hotel: CuratedHotel) => {
-    setSelectedCityId(hotel.cityId);
-    setSelectedHeroHotelId(hotel.id);
-    setSelectedHotelId(hotel.id);
-    setSelectedRoomId(hotel.rooms[0].id);
-    setHeroSearchText(`${hotel.name} — ${hotel.cityName} (${hotel.stateCode})`);
-    setIsTypingHeroSearch(false);
-    setIsHeroDropdownOpen(false);
-  };
-
-  const handleExecuteHeroSearch = () => {
-    setIsHeroDropdownOpen(false);
-    if (selectedHeroHotelId) {
-      const chosenHotel = hotelsCatalog.find((h) => h.id === selectedHeroHotelId);
-      if (chosenHotel) {
-        handleOpenHotelDetail(chosenHotel);
-        return;
-      }
+    if (matchedHotel) {
+      handleOpenHotelDetail(matchedHotel);
+      return;
     }
-    if (isTypingHeroSearch && heroSearchText.trim() !== "") {
-      if (heroMatchingCities.length > 0) {
-        const topCity = heroMatchingCities[0];
-        handleSelectHeroCity(topCity);
-        handleOpenDestination(topCity.id);
-        return;
-      }
-      if (heroMatchingHotels.length > 0) {
-        const topHotel = heroMatchingHotels[0];
-        handleSelectHeroHotel(topHotel);
-        handleOpenHotelDetail(topHotel);
-        return;
-      }
+
+    // 2. Verifica se corresponde a uma cidade/destino
+    const matchedCity = DESTINATION_CITIES.find((city) => {
+      const stateExpanded = STATE_FULL_NAMES[city.stateCode] || "";
+      const haystack = normalizeForSearch(
+        `${city.name} ${city.shortName} ${city.stateCode} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded}`
+      );
+      return haystack.includes(q);
+    });
+
+    if (matchedCity) {
+      handleOpenDestination(matchedCity.id);
+      return;
     }
+
+    // 3. Fallback: abre o destino selecionado atualmente
     handleOpenDestination(selectedCityId);
   };
 
@@ -800,9 +753,6 @@ export default function HospedeClubApp() {
     setSelectedCityId(cityId);
     const matchedCity = DESTINATION_CITIES.find((c) => c.id === cityId);
     if (matchedCity) {
-      setHeroSearchText(`${matchedCity.name} (${matchedCity.stateCode})`);
-      setSelectedHeroHotelId(null);
-      setIsTypingHeroSearch(false);
       syncCustomerActivityToBackend("SEARCH", {
         query: matchedCity.name,
         destinationName: `${matchedCity.name} (${matchedCity.stateCode})`,
@@ -1417,48 +1367,31 @@ export default function HospedeClubApp() {
                 </p>
               </div>
 
-              {/* BARRA DE BUSCA EM BRANCO PURO COM AUTOCOMPLETE DE CIDADE, ESTADO OU HOTEL */}
+              {/* BARRA DE BUSCA EM BRANCO PURO COM CAMPO LIVRE DE DESTINO */}
               <div className="mt-6 sm:mt-8 bg-white/95 backdrop-blur-xl border border-[#DED4C3] rounded-2xl p-3.5 sm:p-5 shadow-[0_20px_50px_rgba(24,32,38,0.12)]">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4 items-center">
-                  <div
-                    ref={heroSearchContainerRef}
-                    className="relative sm:col-span-2 lg:col-span-4 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-3 sm:pb-0 lg:pr-4"
-                  >
+                  <div className="sm:col-span-2 lg:col-span-4 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-3 sm:pb-0 lg:pr-4">
                     <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium mb-1.5">
                       Destino ou Propriedade
                     </label>
 
-                    <div
-                      className={`flex items-center gap-2 bg-[#FAF7F2] px-3 py-2.5 rounded-xl border transition ${
-                        isHeroDropdownOpen
-                          ? "border-[#B8863B] bg-white ring-2 ring-[#B8863B]/15"
-                          : "border-[#E2D9C8] hover:border-[#B8863B]/60"
-                      }`}
-                    >
+                    <div className="flex items-center gap-2 bg-[#FAF7F2] px-3.5 py-2.5 rounded-xl border border-[#E2D9C8] focus-within:border-[#B8863B] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#B8863B]/15 transition">
                       <Search className="w-4 h-4 text-[#B8863B] shrink-0" />
                       <input
                         ref={heroSearchInputRef}
                         type="text"
                         value={heroSearchText}
-                        onFocus={(e) => {
-                          setIsHeroDropdownOpen(true);
-                          e.currentTarget.select();
-                        }}
                         onChange={(e) => {
                           setHeroSearchText(e.target.value);
-                          setIsTypingHeroSearch(true);
-                          setSelectedHeroHotelId(null);
-                          setIsHeroDropdownOpen(true);
+                          setSearchQuery(e.target.value);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
                             handleExecuteHeroSearch();
-                          } else if (e.key === "Escape") {
-                            setIsHeroDropdownOpen(false);
                           }
                         }}
-                        placeholder="Digite cidade, estado ou hotel..."
+                        placeholder="Para onde você quer viajar? (Ex: Rio, Gramado, Maceió...)"
                         className="w-full bg-transparent text-[#182026] text-xs sm:text-sm font-medium placeholder:text-[#5C646B]/60 placeholder:font-normal focus:outline-none"
                       />
                       {heroSearchText && (
@@ -1466,168 +1399,16 @@ export default function HospedeClubApp() {
                           type="button"
                           onClick={() => {
                             setHeroSearchText("");
-                            setIsTypingHeroSearch(true);
-                            setSelectedHeroHotelId(null);
-                            setIsHeroDropdownOpen(true);
+                            setSearchQuery("");
                             heroSearchInputRef.current?.focus();
                           }}
                           className="p-1 rounded-full text-[#5C646B] hover:text-[#182026] hover:bg-[#EAE3D5] transition cursor-pointer shrink-0"
-                          title="Limpar e buscar outro destino ou hotel"
+                          title="Limpar busca"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
-
-                    {/* DROPDOWN POPOVER DE SUGESTÕES EM FUNDO CLARO & ELEGANTE */}
-                    {isHeroDropdownOpen && (
-                      <div className="absolute left-0 right-0 sm:w-[460px] lg:w-[500px] top-full mt-2.5 z-50 bg-white border border-[#D5C7B2] rounded-2xl shadow-[0_24px_60px_rgba(24,32,38,0.18)] overflow-hidden">
-                        <div className="px-4 py-2.5 bg-[#FAF7F2] border-b border-[#EAE3D5] flex items-center justify-between gap-2 text-[11px] text-[#5C646B]">
-                          <span>
-                            {isTypingHeroSearch && heroSearchText.trim() !== ""
-                              ? `Resultados para "${heroSearchText.trim()}"`
-                              : "Sugestões de Cidades, Estados e Hotéis Curados"}
-                          </span>
-                          <span className="text-[#9A6D28] font-medium tabular-price">
-                            {heroMatchingCities.length + heroMatchingHotels.length} opções
-                          </span>
-                        </div>
-
-                        <div className="max-h-[340px] overflow-y-auto divide-y divide-[#F0EAE0]">
-                          {/* GRUPO 1: CIDADES, REGIÕES & ESTADOS */}
-                          {heroMatchingCities.length > 0 && (
-                            <div className="p-2">
-                              <div className="px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium flex items-center justify-between">
-                                <span>Cidades & Estados ({heroMatchingCities.length})</span>
-                                <span className="text-[#5C646B]/70">Destinos</span>
-                              </div>
-                              <div className="space-y-1">
-                                {heroMatchingCities.map((city) => {
-                                  const isSelected =
-                                    selectedCityId === city.id && !selectedHeroHotelId;
-                                  return (
-                                    <button
-                                      key={city.id}
-                                      type="button"
-                                      onClick={() => handleSelectHeroCity(city)}
-                                      className={`w-full px-3 py-2.5 rounded-xl text-left transition cursor-pointer flex items-center justify-between gap-3 ${
-                                        isSelected
-                                          ? "bg-[#FAF7F2] border border-[#B8863B]"
-                                          : "hover:bg-[#FAF7F2] border border-transparent"
-                                      }`}
-                                    >
-                                      <div className="flex items-start gap-2.5 min-w-0">
-                                        <div className="w-7 h-7 rounded-lg bg-[#B8863B]/12 border border-[#B8863B]/30 flex items-center justify-center shrink-0 mt-0.5">
-                                          <MapPin className="w-3.5 h-3.5 text-[#9A6D28]" />
-                                        </div>
-                                        <div className="min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-xs sm:text-sm text-[#182026] font-medium truncate">
-                                              {city.name}
-                                            </span>
-                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F3EDE2] text-[#9A6D28] font-medium shrink-0">
-                                              {city.stateCode}
-                                            </span>
-                                          </div>
-                                          <p className="text-[11px] text-[#5C646B] truncate mt-0.5">
-                                            {city.subAreas.join(" • ")}
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-[10px] text-[#0F5257] bg-[#0F5257]/10 border border-[#0F5257]/20 font-medium px-2 py-0.5 rounded-full shrink-0">
-                                        Até -27%
-                                      </span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* GRUPO 2: HOTÉIS, RESORTS & VILLAS */}
-                          {heroMatchingHotels.length > 0 && (
-                            <div className="p-2">
-                              <div className="px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium flex items-center justify-between">
-                                <span>Hotéis & Villas ({heroMatchingHotels.length})</span>
-                                <span className="text-[#5C646B]/70">Tarifa Membro</span>
-                              </div>
-                              <div className="space-y-1">
-                                {heroMatchingHotels.map((hotel) => {
-                                  const hotelPricing = calculateVellutoPricing(
-                                    hotel.netRate,
-                                    hotel.barRate,
-                                    0.15,
-                                    hotel.cleaningFee || 0,
-                                    hotel.securityDeposit || 0
-                                  );
-                                  const isSelected = selectedHeroHotelId === hotel.id;
-                                  return (
-                                    <button
-                                      key={hotel.id}
-                                      type="button"
-                                      onClick={() => handleSelectHeroHotel(hotel)}
-                                      className={`w-full px-3 py-2.5 rounded-xl text-left transition cursor-pointer flex items-center justify-between gap-3 ${
-                                        isSelected
-                                          ? "bg-[#FAF7F2] border border-[#B8863B]"
-                                          : "hover:bg-[#FAF7F2] border border-transparent"
-                                      }`}
-                                    >
-                                      <div className="flex items-start gap-2.5 min-w-0">
-                                        <div className="w-7 h-7 rounded-lg bg-[#0F5257]/10 border border-[#0F5257]/25 flex items-center justify-center shrink-0 mt-0.5">
-                                          {hotel.accommodationType === "villa" ? (
-                                            <Home className="w-3.5 h-3.5 text-[#0F5257]" />
-                                          ) : (
-                                            <Building2 className="w-3.5 h-3.5 text-[#0F5257]" />
-                                          )}
-                                        </div>
-                                        <div className="min-w-0">
-                                          <span className="text-xs sm:text-sm text-[#182026] font-medium block truncate">
-                                            {hotel.name}
-                                          </span>
-                                          <p className="text-[11px] text-[#5C646B] truncate mt-0.5">
-                                            {hotel.neighborhood} • {hotel.cityName} ({hotel.stateCode})
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      <div className="text-right shrink-0">
-                                        <span className="text-xs font-semibold text-[#0F5257] tabular-price block">
-                                          {formatBRL(hotelPricing.pix.pixPrice)}
-                                        </span>
-                                        <span className="text-[10px] text-[#5C646B] block">
-                                          /noite
-                                        </span>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* ESTADO VAZIO SE NENHUM RESULTADO COMBINAR */}
-                          {heroMatchingCities.length === 0 && heroMatchingHotels.length === 0 && (
-                            <div className="p-6 text-center">
-                              <p className="text-xs text-[#5C646B]">
-                                Nenhuma cidade, estado ou propriedade encontrada para &ldquo;{heroSearchText}&rdquo;.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setHeroSearchText("");
-                                  setIsTypingHeroSearch(true);
-                                  heroSearchInputRef.current?.focus();
-                                }}
-                                className="mt-3 px-3.5 py-1.5 rounded-lg bg-[#B8863B] text-white text-xs hover:bg-[#9A6D28] transition cursor-pointer"
-                              >
-                                Ver todos os destinos e hotéis
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   <div className="lg:col-span-3 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-3 sm:pb-0 lg:pr-4">
