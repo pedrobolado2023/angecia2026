@@ -78,6 +78,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ----------------------------------------------------------------------------
+  # 4. DISPARADOR WHATSAPP WACLI (openclaw/wacli)
+  # ----------------------------------------------------------------------------
+  wacli:
+    build:
+      context: ./services/wacli
+      dockerfile: Dockerfile
+    container_name: hospede-wacli
+    restart: unless-stopped
+    ports:
+      - "${WACLI_PORT:-3001}:3001"
+    environment:
+      - PORT=3001
+      - WACLI_API_KEY=${WACLI_API_KEY:-}
+    volumes:
+      - waclidata:/data
+
 volumes:
   pgdata:
+  waclidata:
 
