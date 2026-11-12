@@ -8,6 +8,7 @@ export interface WacliSendResult {
   messageId?: string;
   error?: string;
   mockMode?: boolean;
+  selfNumberError?: boolean;
 }
 
 /**
@@ -47,13 +48,22 @@ export async function sendWhatsAppVerificationCode(params: {
 
   console.log(`[HÓSPEDE CLUB • WACLI DISPATCH] Disparando para ${cleanPhone}: Código ${params.code}`);
 
-  // 1. Tenta envio via API HTTP da wacli (se configurada via variável de ambiente)
-  const wacliEndpoint = process.env.WACLI_ENDPOINT;
+  // Endpoints prioritários para chamada HTTP do WACLI Gateway
+  const candidateEndpoints = [
+    process.env.WACLI_ENDPOINT,
+    "http://hospede-wacli:3001/send",
+    "https://agentesia-hospede-wacli.4nvzqw.easypanel.host/send",
+  ].filter(Boolean) as string[];
+
   const wacliApiKey = process.env.WACLI_API_KEY || process.env.WACLI_TOKEN;
 
-  if (wacliEndpoint) {
+  let lastError = "";
+  let isSelfNumber = false;
+
+  for (const endpoint of candidateEndpoints) {
     try {
-      const response = await fetch(wacliEndpoint, {
+      console.log(`[WACLI DISPATCH] Tentando endpoint: ${endpoint}`);
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,23 +75,51 @@ export async function sendWhatsAppVerificationCode(params: {
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json().catch(() => ({}));
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = { raw: responseText };
+      }
+
+      if (response.ok && data.success !== false) {
+        console.log(`[WACLI DISPATCH SUCESSO] Mensagem enviada com sucesso para ${cleanPhone} via ${endpoint}!`);
         return {
           success: true,
           messageId: data.id || data.messageId || `WACLI-${Date.now()}`,
           mockMode: false,
         };
       }
-    } catch (httpErr) {
-      console.warn("[WACLI HTTP Warning] Falha na rota HTTP da wacli, tentando fallback CLI:", httpErr);
+
+      // Analisa o motivo da falha retornado pelo WhatsApp / wacli
+      const errorMsg = data.error || responseText;
+      console.warn(`[WACLI DISPATCH ERRO] ${endpoint} retornou status ${response.status}:`, errorMsg);
+      lastError = errorMsg;
+
+      if (errorMsg.includes("linked account itself") || errorMsg.includes("self-messages")) {
+        isSelfNumber = true;
+        // Não adianta tentar outros endpoints se o erro é do próprio WhatsApp que proíbe envio para o próprio número conectado
+        break;
+      }
+    } catch (httpErr: any) {
+      console.warn(`[WACLI HTTP Warning] Falha ao tentar ${endpoint}:`, httpErr.message);
+      lastError = httpErr.message;
     }
   }
 
-  // 2. Tenta envio via comando de terminal wacli (se binário estiver instalado no PATH do servidor)
+  if (isSelfNumber) {
+    return {
+      success: false,
+      error: "O número cadastrado é o mesmo número conectado ao WhatsApp do sistema (+55 62 99347-3656). O WhatsApp não permite enviar mensagem para o próprio aparelho conectado. Cadastre um número de celular diferente para receber a mensagem.",
+      selfNumberError: true,
+      mockMode: true, // Libera o previewCode para o administrador conseguir logar mesmo testando com o próprio número
+    };
+  }
+
+  // 2. Tenta envio via comando de terminal wacli local (se binário estiver instalado no PATH do servidor)
   try {
     const wacliBin = process.env.WACLI_BIN_PATH || "wacli";
-    // Executa comando wacli send se disponível
     const { stdout } = await execAsync(
       `"${wacliBin}" send --to "${cleanPhone}" --message "${messageText.replace(/"/g, '\\"')}"`,
       { timeout: 8000 }
@@ -91,14 +129,15 @@ export async function sendWhatsAppVerificationCode(params: {
       messageId: `CLI-${Date.now()}`,
       mockMode: false,
     };
-  } catch {
-    // 3. Fallback Gracioso / Mock Mode Ativo enquanto a wacli não está pareada
+  } catch (cliErr: any) {
+    // 3. Fallback Gracioso / Mock Mode Ativo apenas se o WACLI falhar
     console.log(
-      `[WACLI MOCK ATIVO] Código de verificação para ${params.customerName} (${cleanPhone}): ${params.code}`
+      `[WACLI MOCK ATIVO] Falha no WACLI (${lastError || cliErr.message}). Código para ${params.customerName} (${cleanPhone}): ${params.code}`
     );
     return {
       success: true,
       messageId: `MOCK-${Date.now()}`,
+      error: lastError,
       mockMode: true,
     };
   }

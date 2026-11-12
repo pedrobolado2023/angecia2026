@@ -81,13 +81,18 @@ export async function POST(request: NextRequest) {
       customerName: customer.fullName,
     });
 
+    const isSelf = Boolean(wacliResult.selfNumberError);
+
     return NextResponse.json({
       ok: true,
-      message: `Cadastro realizado com sucesso! Enviamos um código de segurança de 6 dígitos para o seu WhatsApp (${customer.whatsapp}).`,
+      message: isSelf
+        ? `Atenção: O número informado (${customer.whatsapp}) é o próprio número de envio do WhatsApp da agência (+55 62 99347-3656). O WhatsApp não permite o envio para o próprio número. Use o código exibido abaixo para validar seu acesso de teste.`
+        : `Cadastro realizado com sucesso! Enviamos um código de segurança de 6 dígitos para o seu WhatsApp (${customer.whatsapp}).`,
       customerId: customer.id,
       email: customer.email,
       whatsapp: customer.whatsapp,
-      // Se estiver em modo mock/teste sem wacli conectada, facilita visualização
+      selfNumberError: isSelf,
+      // Se for o próprio número ou mock, exibe o código para não travar o teste do administrador
       previewCode: wacliResult.mockMode ? verificationCode : undefined,
     });
   } catch (err: unknown) {

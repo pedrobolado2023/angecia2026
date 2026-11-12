@@ -93,6 +93,7 @@ export function CustomerAuthModal({
   const [verificationTarget, setVerificationTarget] = useState("");
   const [resendCountdown, setResendCountdown] = useState(60);
   const [previewDevCode, setPreviewDevCode] = useState<string | null>(null);
+  const [selfNumberNotice, setSelfNumberNotice] = useState<boolean>(false);
 
   // Estados de UI
   const [isLoading, setIsLoading] = useState(false);
@@ -233,6 +234,7 @@ export function CustomerAuthModal({
 
       setVerificationTarget(email);
       setPreviewDevCode(data.previewCode || null);
+      setSelfNumberNotice(Boolean(data.selfNumberError));
       setSuccessNotice(data.message);
       setActiveTab("verify");
       setResendCountdown(60);
@@ -304,6 +306,7 @@ export function CustomerAuthModal({
       if (res.ok && data.ok) {
         setSuccessNotice(data.message);
         setPreviewDevCode(data.previewCode || null);
+        setSelfNumberNotice(Boolean(data.selfNumberError));
         setResendCountdown(60);
       } else {
         setErrorMessage(data.error || "Erro ao reenviar código.");
@@ -455,10 +458,24 @@ export function CustomerAuthModal({
             </div>
           )}
 
-          {previewDevCode && (
+          {selfNumberNotice && (
+            <div className="mt-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+              <strong className="block mb-1 font-semibold text-amber-950">Aviso sobre o WhatsApp:</strong>
+              O número cadastrado é o mesmo número conectado ao disparador oficial da agência (+55 62 99347-3656). O WhatsApp não autoriza envio de mensagens para o próprio número da conta conectada. Utilize o código de acesso abaixo para testar ou cadastre outro número para receber no celular.
+            </div>
+          )}
+
+          {previewDevCode && !selfNumberNotice && (
             <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center justify-between">
               <span>Código WhatsApp para testes:</span>
               <strong className="font-mono text-sm tracking-widest text-[#B8863B]">{previewDevCode}</strong>
+            </div>
+          )}
+
+          {previewDevCode && selfNumberNotice && (
+            <div className="mt-2 p-2.5 rounded-xl bg-amber-100/70 border border-amber-300 text-xs text-amber-950 flex items-center justify-between">
+              <span>Código de ativação gerado:</span>
+              <strong className="font-mono text-base tracking-widest text-[#9A6D28] font-bold">{previewDevCode}</strong>
             </div>
           )}
         </div>
