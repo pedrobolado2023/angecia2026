@@ -124,7 +124,7 @@ export default function HospedeClubApp() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const [checkInDate, setCheckInDate] = useState<string>("2026-11-13");
-  const [nightsCount, setNightsCount] = useState<number>(3);
+  const [nightsCount, setNightsCount] = useState<number>(1);
   const [guestsCount, setGuestsCount] = useState<number>(2);
 
   const [heroSceneIndex, setHeroSceneIndex] = useState<number>(0);
@@ -191,8 +191,6 @@ export default function HospedeClubApp() {
 
   const [pushNotificationBanner, setPushNotificationBanner] = useState<string | null>(null);
   const [countdownTick, setCountdownTick] = useState<number>(0);
-  const [fomoIndex, setFomoIndex] = useState<number>(0);
-  const [showFomoToast, setShowFomoToast] = useState<boolean>(true);
 
   const syncCustomerActivityToBackend = (
     activityType:
@@ -514,13 +512,6 @@ export default function HospedeClubApp() {
       setCountdownTick((prev) => prev + 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const fomoInterval = setInterval(() => {
-      setFomoIndex((prev) => (prev + 1) % LIVE_FOMO_NOTIFICATIONS.length);
-    }, 7500);
-    return () => clearInterval(fomoInterval);
   }, []);
 
   const formatBRL = (val: number) =>
@@ -1062,7 +1053,7 @@ export default function HospedeClubApp() {
 
       {/* HEADER EDITORIAL CLARO & ILUMINADO (PEARL IVORY GLASS) */}
       <header className="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md text-[#182026] border-b border-[#E5DEC9] shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 h-14 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
           {/* Brand Logo */}
           <button
             onClick={() => {
@@ -1070,18 +1061,18 @@ export default function HospedeClubApp() {
               setShowFavoritesOnly(false);
               setMobileMenuOpen(false);
             }}
-            className="text-left group cursor-pointer flex items-center gap-3 min-w-0"
+            className="text-left group cursor-pointer flex items-center gap-2 sm:gap-3 min-w-0"
           >
-            <div className="w-9 h-9 rounded-full border border-[#B8863B] flex items-center justify-center bg-[#B8863B]/10 group-hover:bg-[#B8863B] group-hover:text-white transition shrink-0">
-              <span className="font-editorial text-lg text-[#9A6D28] group-hover:text-white font-normal">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-[#B8863B] flex items-center justify-center bg-[#B8863B]/10 group-hover:bg-[#B8863B] group-hover:text-white transition shrink-0">
+              <span className="font-editorial text-base sm:text-lg text-[#9A6D28] group-hover:text-white font-normal">
                 H
               </span>
             </div>
             <div className="truncate">
-              <span className="font-editorial text-xl sm:text-2xl tracking-[0.22em] text-[#182026] font-normal block leading-none truncate">
+              <span className="font-editorial text-lg sm:text-2xl tracking-[0.16em] sm:tracking-[0.22em] text-[#182026] font-normal block leading-none truncate">
                 HÓSPEDE CLUB
               </span>
-              <span className="text-[9px] uppercase tracking-[0.22em] text-[#9A6D28] block mt-1 truncate">
+              <span className="text-[8px] sm:text-[9px] uppercase tracking-[0.16em] sm:tracking-[0.22em] text-[#9A6D28] block mt-0.5 sm:mt-1 truncate">
                 Hospedagens com Desconto
               </span>
             </div>
@@ -1135,13 +1126,13 @@ export default function HospedeClubApp() {
           </nav>
 
           {/* Ações Direita: Favoritos + Hóspede Club */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             <button
               onClick={() => {
                 setShowFavoritesOnly(!showFavoritesOnly);
                 setActiveScreen("home");
               }}
-              className={`px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 border ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 border ${
                 showFavoritesOnly
                   ? "bg-[#B83B2B] border-[#B83B2B] text-white shadow-xs"
                   : "bg-white border-[#E2D9C8] text-[#182026] hover:border-[#B8863B]"
@@ -1157,12 +1148,12 @@ export default function HospedeClubApp() {
                     : "text-[#5C646B]"
                 }`}
               />
-              <span className="hidden sm:inline text-[11px]">Salvos ({favoriteIds.length})</span>
+              <span className="hidden md:inline text-[11px]">Salvos ({favoriteIds.length})</span>
             </button>
 
             <button
               onClick={() => setShowClubModal(true)}
-              className={`px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer border ${
+              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer border ${
                 isClubMember
                   ? "bg-[#0F5257] border-[#0F5257] text-white hover:bg-[#146B72] shadow-xs"
                   : "bg-[#B8863B] border-[#B8863B] text-white"
@@ -1171,19 +1162,21 @@ export default function HospedeClubApp() {
               {isClubMember ? (
                 <>
                   <Unlock className="w-3 h-3 shrink-0 text-[#FFE599]" />
-                  <span>Membro Private</span>
+                  <span className="hidden sm:inline">Membro Private</span>
+                  <span className="sm:hidden">Membro</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-3 h-3 shrink-0" />
-                  <span>Cadastrar Membro</span>
+                  <span className="hidden sm:inline">Cadastrar Membro</span>
+                  <span className="sm:hidden">Clube</span>
                 </>
               )}
             </button>
 
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-lg text-[#182026] hover:text-[#B8863B] cursor-pointer"
+              className="lg:hidden p-1.5 sm:p-2 rounded-lg text-[#182026] hover:text-[#B8863B] cursor-pointer"
               aria-label="Menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -1259,34 +1252,35 @@ export default function HospedeClubApp() {
       {activeScreen === "home" && (
         <main className="flex-1">
           {/* HERO SECTION SOLAR & LUMINOSA */}
-          <section className="relative z-20 bg-[#F3EDE2] text-[#182026] min-h-[520px] md:min-h-[570px] flex items-center border-b border-[#E5DEC9]">
+          <section className="relative z-20 bg-[#F3EDE2] text-[#182026] min-h-[460px] sm:min-h-[520px] md:min-h-[570px] flex items-center border-b border-[#E5DEC9]">
             <div className="absolute inset-0 z-0 overflow-hidden">
               <LuxuryImage
                 src={activeScene.videoPoster}
                 alt={activeScene.title}
                 fallbackLabel={activeScene.title}
                 className="w-full h-full opacity-95 animate-ken-burns"
+                priority
               />
               {/* Gradiente Diurno Suave: Alabastro Luminoso à esquerda abrindo para a paisagem viva à direita */}
               <div className="absolute inset-0 bg-gradient-to-r from-[#FAF7F2]/96 via-[#FAF7F2]/85 to-[#FAF7F2]/25" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#FAF7F2] via-transparent to-white/20" />
             </div>
 
-            <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-12 md:py-16 w-full">
+            <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-8 sm:py-12 md:py-16 w-full">
               <div className="max-w-2xl">
-                <h1 className="font-editorial text-4xl sm:text-5xl md:text-6xl font-normal text-[#182026] leading-[1.12]">
+                <h1 className="font-editorial text-3xl sm:text-5xl md:text-6xl font-normal text-[#182026] leading-[1.15] sm:leading-[1.12]">
                   A arte de se hospedar no{" "}
                   <span className="italic text-[#B8863B]">extraordinário.</span>
                 </h1>
 
-                <p className="text-sm sm:text-base text-[#465058] mt-4 max-w-xl leading-relaxed font-normal">
+                <p className="text-xs sm:text-base text-[#465058] mt-3 sm:mt-4 max-w-xl leading-relaxed font-normal">
                   Estadias singulares com tarifas exclusivas negociadas diretamente com os hotéis e resorts mais desejados do Brasil.
                 </p>
               </div>
 
               {/* BARRA DE BUSCA EM BRANCO PURO COM AUTOCOMPLETE DE CIDADE, ESTADO OU HOTEL */}
-              <div className="mt-8 bg-white/95 backdrop-blur-xl border border-[#DED4C3] rounded-2xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(24,32,38,0.12)]">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 items-center">
+              <div className="mt-6 sm:mt-8 bg-white/95 backdrop-blur-xl border border-[#DED4C3] rounded-2xl p-3.5 sm:p-5 shadow-[0_20px_50px_rgba(24,32,38,0.12)]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4 items-center">
                   <div
                     ref={heroSearchContainerRef}
                     className="relative sm:col-span-2 lg:col-span-4 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-3 sm:pb-0 lg:pr-4"
@@ -1513,10 +1507,19 @@ export default function HospedeClubApp() {
                         onChange={(e) => setNightsCount(Number(e.target.value))}
                         className="bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border border-[#E2D9C8] cursor-pointer shrink-0"
                       >
-                        <option value={2} className="bg-white">2 noites</option>
-                        <option value={3} className="bg-white">3 noites</option>
-                        <option value={5} className="bg-white">5 noites</option>
-                        <option value={7} className="bg-white">7 noites</option>
+                        <option value={1} className="bg-white">1 diária</option>
+                        <option value={2} className="bg-white">2 diárias</option>
+                        <option value={3} className="bg-white">3 diárias</option>
+                        <option value={4} className="bg-white">4 diárias</option>
+                        <option value={5} className="bg-white">5 diárias</option>
+                        <option value={6} className="bg-white">6 diárias</option>
+                        <option value={7} className="bg-white">7 diárias</option>
+                        <option value={8} className="bg-white">8 diárias</option>
+                        <option value={9} className="bg-white">9 diárias</option>
+                        <option value={10} className="bg-white">10 diárias</option>
+                        <option value={14} className="bg-white">14 diárias</option>
+                        <option value={21} className="bg-white">21 diárias</option>
+                        <option value={30} className="bg-white">30 diárias</option>
                       </select>
                     </div>
                   </div>
@@ -1578,20 +1581,20 @@ export default function HospedeClubApp() {
           </section>
 
           {/* SEÇÃO DE DESTINOS E COLEÇÕES EXCLUSIVAS */}
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-12">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+          <section className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-8 sm:py-12">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6 sm:mb-8">
               <div>
                 <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
                   Coleção Exclusiva
                 </span>
-                <h2 className="font-editorial text-3xl sm:text-4xl font-normal text-[#182026]">
+                <h2 className="font-editorial text-2xl sm:text-4xl font-normal text-[#182026]">
                   Destinos e Refúgios Mais Desejados
                 </h2>
               </div>
 
               <button
                 onClick={() => setIsClubMember(!isClubMember)}
-                className="self-start md:self-auto px-4 py-2 rounded-full border border-[#DFD5C5] bg-white text-xs text-[#182026] hover:border-[#B8863B] shadow-2xs transition cursor-pointer flex items-center gap-2"
+                className="self-start md:self-auto px-3.5 sm:px-4 py-2 rounded-full border border-[#DFD5C5] bg-white text-xs text-[#182026] hover:border-[#B8863B] shadow-2xs transition cursor-pointer flex items-center gap-2"
               >
                 {isClubMember ? (
                   <>
@@ -1607,7 +1610,7 @@ export default function HospedeClubApp() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {currentGeoProfile.recommendedCityIds.map((cityId) => {
                 const city = DESTINATION_CITIES.find((c) => c.id === cityId);
                 if (!city) return null;
@@ -1617,11 +1620,12 @@ export default function HospedeClubApp() {
                     onClick={() => handleOpenDestination(city.id)}
                     className="group rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] hover:border-[#B8863B] flex flex-col justify-between cursor-pointer shadow-sm hover:shadow-xl transition duration-500"
                   >
-                    <div className="relative h-48 w-full overflow-hidden">
+                    <div className="relative h-44 sm:h-48 w-full overflow-hidden">
                       <LuxuryImage
                         src={city.heroImage}
                         alt={city.name}
                         fallbackLabel={city.name}
+                        priority
                         className="w-full h-full group-hover:scale-105 transition duration-700"
                       />
                       <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-20">
@@ -1634,12 +1638,12 @@ export default function HospedeClubApp() {
                       </div>
                     </div>
 
-                    <div className="p-5 bg-white flex-1 flex flex-col justify-between">
+                    <div className="p-4 sm:p-5 bg-white flex-1 flex flex-col justify-between">
                       <div>
                         <span className="text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium block">
                           {city.stateCode} • {city.regionTag}
                         </span>
-                        <h3 className="font-editorial text-2xl font-normal text-[#182026] leading-snug mt-0.5">
+                        <h3 className="font-editorial text-xl sm:text-2xl font-normal text-[#182026] leading-snug mt-0.5">
                           {city.shortName}
                         </h3>
                         <p className="text-xs text-[#5C646B] line-clamp-1 mt-1">
@@ -1833,7 +1837,7 @@ export default function HospedeClubApp() {
             </div>
           </section>
 
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6">
+          <section className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 lg:pb-10">
             {/* STATUS BAR DE DISPONIBILIDADE CONFIRMADA (WHITE-LABEL) */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-3.5 rounded-2xl bg-white border border-[#E5DEC9] shadow-2xs">
               <div className="flex items-center gap-2">
@@ -1869,7 +1873,7 @@ export default function HospedeClubApp() {
               </button>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-5 sm:space-y-6">
               {destinationHotels.map((hotel) => {
                 const pricing = calculateVellutoPricing(hotel.netRate, hotel.barRate, 0.15);
                 return (
@@ -1877,16 +1881,17 @@ export default function HospedeClubApp() {
                     key={hotel.id}
                     className="rounded-2xl bg-white border border-[#E5DEC9] overflow-hidden shadow-sm hover:shadow-md transition grid grid-cols-1 lg:grid-cols-12"
                   >
-                    <div className="lg:col-span-4 relative min-h-[230px]">
+                    <div className="lg:col-span-4 relative min-h-[190px] sm:min-h-[230px]">
                       <LuxuryImage
                         src={hotel.heroImage}
                         alt={hotel.name}
                         fallbackLabel={hotel.name}
+                        priority
                         className="w-full h-full"
                       />
                     </div>
 
-                    <div className="lg:col-span-5 p-6 flex flex-col justify-between">
+                    <div className="lg:col-span-5 p-4 sm:p-6 flex flex-col justify-between">
                       <div>
                         <span className="text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium">
                           {hotel.neighborhood}
@@ -1896,7 +1901,7 @@ export default function HospedeClubApp() {
                         </h3>
                         <p className="text-xs text-[#5C646B] mt-1">{hotel.subtitle}</p>
 
-                        <div className="mt-4 p-3.5 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] space-y-2">
+                        <div className="mt-4 p-3 sm:p-3.5 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] space-y-2">
                           {hotel.landmarkDistances.map((dist, idx) => {
                             const isHighlighted =
                               selectedLandmarkFilter !== "all" &&
@@ -1924,7 +1929,7 @@ export default function HospedeClubApp() {
                       </div>
                     </div>
 
-                    <div className="lg:col-span-3 p-6 bg-[#FAF7F2] border-t lg:border-t-0 lg:border-l border-[#EAE3D5] flex flex-col justify-between">
+                    <div className="lg:col-span-3 p-4 sm:p-6 bg-[#FAF7F2] border-t lg:border-t-0 lg:border-l border-[#EAE3D5] flex flex-col justify-between">
                       <div className="tabular-price">
                         <span className="text-xs text-[#5C646B] line-through block">
                           Oficial {formatBRL(pricing.barRate)}
@@ -1932,7 +1937,7 @@ export default function HospedeClubApp() {
                         <span className="text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium block mt-2">
                           Tarifa Membro
                         </span>
-                        <p className="text-2xl font-semibold text-[#0F5257] mt-0.5">
+                        <p className="text-xl sm:text-2xl font-semibold text-[#0F5257] mt-0.5">
                           {formatBRL(pricing.pix.pixPrice)}
                         </p>
                         <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded-full bg-[#0F5257]/10 text-[#0F5257] text-xs font-medium">
@@ -1940,16 +1945,16 @@ export default function HospedeClubApp() {
                         </span>
                       </div>
 
-                      <div className="space-y-2 mt-6">
+                      <div className="space-y-2 mt-5 sm:mt-6">
                         <button
                           onClick={() => handleDirectCheckout(hotel)}
-                          className="w-full py-2.5 px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.12em] shadow-xs transition cursor-pointer"
+                          className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.12em] shadow-xs transition flex items-center justify-center cursor-pointer"
                         >
                           Reservar Agora
                         </button>
                         <button
                           onClick={() => handleOpenHotelDetail(hotel)}
-                          className="w-full py-2 px-4 rounded-xl bg-white border border-[#DFD5C5] hover:border-[#B8863B] text-[#182026] text-xs transition cursor-pointer"
+                          className="w-full min-h-[44px] py-2 px-4 rounded-xl bg-white border border-[#DFD5C5] hover:border-[#B8863B] text-[#182026] text-xs transition flex items-center justify-center cursor-pointer"
                         >
                           Ver Suítes ({hotel.rooms.length})
                         </button>
@@ -1967,40 +1972,41 @@ export default function HospedeClubApp() {
           TELA 03: PÁGINA DO HOTEL (CARROSSEL INTERATIVO + COMPARADOR SUÍTES)
          ===================================================================== */}
       {activeScreen === "hotel" && (
-        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-10 w-full">
+        <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-6 sm:py-10 w-full pb-24 lg:pb-10">
           <button
             onClick={() => setActiveScreen("home")}
-            className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-medium hover:underline mb-5 cursor-pointer"
+            className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-medium hover:underline mb-4 sm:mb-5 cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Voltar para a tela inicial</span>
           </button>
 
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 sm:gap-4 mb-6">
             <div>
               <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
                 {selectedHotel.neighborhood} • {selectedHotel.cityName} ({selectedHotel.stateCode})
               </span>
-              <h1 className="font-editorial text-3xl sm:text-5xl font-normal text-[#182026]">
+              <h1 className="font-editorial text-2xl sm:text-5xl font-normal text-[#182026]">
                 {selectedHotel.name}
               </h1>
-              <p className="text-xs sm:text-sm text-[#5C646B] mt-1.5">
+              <p className="text-xs sm:text-sm text-[#5C646B] mt-1 sm:mt-1.5">
                 {selectedHotel.primaryLandmarkDistance}
               </p>
             </div>
 
-            <div className="px-3.5 py-2 rounded-full bg-[#B83B2B]/10 border border-[#B83B2B]/25 text-xs text-[#B83B2B] font-medium">
+            <div className="self-start lg:self-auto px-3.5 py-1.5 sm:py-2 rounded-full bg-[#B83B2B]/10 border border-[#B83B2B]/25 text-xs text-[#B83B2B] font-medium">
               {selectedHotel.scarcityLabel}
             </div>
           </div>
 
           {/* Galeria com Carrossel Compacto & Elegante */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
-            <div className="lg:col-span-8 relative h-56 sm:h-72 lg:h-80 rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-8">
+            <div className="lg:col-span-8 relative h-52 sm:h-72 lg:h-80 rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm">
               <LuxuryImage
                 src={hotelAllPhotos[activePhotoIndex] || selectedHotel.heroImage}
                 alt={selectedHotel.name}
                 fallbackLabel={selectedHotel.name}
+                priority
                 className="w-full h-full"
               />
               <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 flex items-center justify-between z-20 pointer-events-none">
@@ -2010,7 +2016,7 @@ export default function HospedeClubApp() {
                       prev === 0 ? hotelAllPhotos.length - 1 : prev - 1
                     )
                   }
-                  className="pointer-events-auto w-9 h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
+                  className="pointer-events-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
                   aria-label="Anterior"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -2019,7 +2025,7 @@ export default function HospedeClubApp() {
                   onClick={() =>
                     setActivePhotoIndex((prev) => (prev + 1) % hotelAllPhotos.length)
                   }
-                  className="pointer-events-auto w-9 h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
+                  className="pointer-events-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
                   aria-label="Próxima"
                 >
                   <ChevronRight className="w-5 h-5" />
@@ -2028,12 +2034,12 @@ export default function HospedeClubApp() {
             </div>
 
             <div className="lg:col-span-4 flex flex-col justify-between gap-3">
-              <div className="grid grid-cols-3 lg:grid-cols-2 gap-2">
+              <div className="grid grid-cols-4 lg:grid-cols-2 gap-2">
                 {hotelAllPhotos.slice(0, 4).map((imgUrl, idx) => (
                   <button
                     key={idx}
                     onClick={() => setActivePhotoIndex(idx)}
-                    className={`relative h-16 sm:h-22 lg:h-28 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
+                    className={`relative h-14 sm:h-22 lg:h-28 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
                       activePhotoIndex === idx
                         ? "border-[#B8863B] shadow-sm"
                         : "border-transparent opacity-75 hover:opacity-100"
@@ -2042,6 +2048,7 @@ export default function HospedeClubApp() {
                     <LuxuryImage
                       src={imgUrl}
                       alt={`${selectedHotel.name} ${idx + 1}`}
+                      priority
                       className="w-full h-full"
                     />
                   </button>
@@ -2066,7 +2073,7 @@ export default function HospedeClubApp() {
 
           {/* Suítes & Comparador Claro */}
           <div className="space-y-4">
-            <h2 className="font-editorial text-3xl font-normal text-[#182026] mb-4">
+            <h2 className="font-editorial text-2xl sm:text-3xl font-normal text-[#182026] mb-3 sm:mb-4">
               Suítes & Condições de Membro
             </h2>
 
@@ -2084,19 +2091,19 @@ export default function HospedeClubApp() {
               return (
                 <div
                   key={room.id}
-                  className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] hover:border-[#B8863B] shadow-xs transition grid grid-cols-1 lg:grid-cols-12 gap-5 items-center"
+                  className="p-4 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] hover:border-[#B8863B] shadow-xs transition grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-center"
                 >
                   <div className="lg:col-span-5">
                     <span className="text-[11px] uppercase tracking-[0.15em] text-[#9A6D28] font-medium block">
                       {room.sizeM2} m² • {room.viewLabel}
                     </span>
-                    <h3 className="font-editorial text-2xl font-normal text-[#182026] mt-0.5">
+                    <h3 className="font-editorial text-xl sm:text-2xl font-normal text-[#182026] mt-0.5">
                       {room.name}
                     </h3>
                     <p className="text-xs text-[#5C646B] mt-1">
                       {room.bedConfig} • {room.boardBasis}
                     </p>
-                    <div className="flex flex-wrap gap-2 mt-3">
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-3">
                       {room.highlights.map((h, i) => (
                         <span
                           key={i}
@@ -2108,12 +2115,12 @@ export default function HospedeClubApp() {
                     </div>
                   </div>
 
-                  <div className="lg:col-span-4 grid grid-cols-2 gap-3 p-4 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] tabular-price">
-                    <div className="border-r border-[#E2D9C8] pr-3">
+                  <div className="lg:col-span-4 grid grid-cols-2 gap-2 sm:gap-3 p-3.5 sm:p-4 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] tabular-price">
+                    <div className="border-r border-[#E2D9C8] pr-2 sm:pr-3">
                       <span className="text-[10px] uppercase tracking-wider text-[#5C646B] block">
                         Tarifa Oficial
                       </span>
-                      <span className="text-lg text-[#B83B2B] line-through block mt-0.5">
+                      <span className="text-base sm:text-lg text-[#B83B2B] line-through block mt-0.5">
                         {formatBRL(roomPricing.barRate)}
                       </span>
                     </div>
@@ -2122,7 +2129,7 @@ export default function HospedeClubApp() {
                       <span className="text-[10px] uppercase tracking-wider text-[#9A6D28] font-medium block">
                         Tarifa Membro
                       </span>
-                      <span className="text-xl font-semibold text-[#0F5257] block mt-0.5">
+                      <span className="text-lg sm:text-xl font-semibold text-[#0F5257] block mt-0.5">
                         {formatBRL(roomPricing.pix.pixPrice)}
                       </span>
                       <span className="text-[11px] text-[#0F5257] font-medium block">
@@ -2135,7 +2142,7 @@ export default function HospedeClubApp() {
                     <button
                       disabled={roomSoldOut}
                       onClick={() => handleDirectCheckout(selectedHotel, room)}
-                      className={`w-full py-3 px-5 rounded-xl font-medium text-xs uppercase tracking-[0.12em] transition flex items-center justify-center gap-2 ${
+                      className={`w-full min-h-[44px] py-3 px-5 rounded-xl font-medium text-xs uppercase tracking-[0.12em] transition flex items-center justify-center gap-2 ${
                         roomSoldOut
                           ? "bg-stone-200 text-stone-500 cursor-not-allowed"
                           : "bg-[#B8863B] hover:bg-[#9A6D28] text-white shadow-xs cursor-pointer"
@@ -2159,17 +2166,17 @@ export default function HospedeClubApp() {
           TELA 04: CHECKOUT EXPRESSO CLARO & ELEGANTE (< 90s)
          ===================================================================== */}
       {activeScreen === "checkout" && (
-        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-10 w-full">
+        <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-6 sm:py-10 w-full pb-28 lg:pb-10">
           <button
             onClick={() => setActiveScreen("hotel")}
-            className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-medium hover:underline mb-5 cursor-pointer"
+            className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-medium hover:underline mb-4 sm:mb-5 cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Voltar para {selectedHotel.name}</span>
           </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
+            <div className="lg:col-span-8 space-y-5 sm:space-y-6">
               {/* Alerta de Erro de Validação */}
               {checkoutError && (
                 <div className="p-4 rounded-2xl bg-[#B83B2B]/10 border border-[#B83B2B]/30 text-xs sm:text-sm text-[#B83B2B] flex items-center gap-3">
@@ -2179,7 +2186,7 @@ export default function HospedeClubApp() {
               )}
 
               {/* 1. Titular da Reserva */}
-              <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
+              <div className="p-4 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block">
@@ -2337,7 +2344,7 @@ export default function HospedeClubApp() {
               </div>
 
               {/* 2. Segundo Adulto (Acompanhante) */}
-              <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
+              <div className="p-4 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block">
@@ -2408,7 +2415,7 @@ export default function HospedeClubApp() {
               </div>
 
               {/* 3. Modalidade de Pagamento Mercado Pago */}
-              <div className="p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
+              <div className="p-4 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="text-[10px] uppercase tracking-[0.2em] text-[#0F5257] font-semibold block">
@@ -2761,7 +2768,7 @@ export default function HospedeClubApp() {
             </div>
 
             <aside className="lg:col-span-4">
-              <div className="p-6 rounded-2xl bg-white text-[#182026] border border-[#E5DEC9] shadow-sm">
+              <div className="p-4 sm:p-6 rounded-2xl bg-white text-[#182026] border border-[#E5DEC9] shadow-sm">
                 <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium">
                   Resumo da Estadia
                 </span>
@@ -2842,33 +2849,10 @@ export default function HospedeClubApp() {
         />
       )}
 
-      {/* PROVA SOCIAL CLARA & DISCRETA */}
-      {showFomoToast && (
-        <div className="fixed bottom-20 lg:bottom-5 left-3 right-3 sm:left-5 sm:right-auto z-30 sm:max-w-xs bg-white/95 backdrop-blur-md text-[#182026] border border-[#DFD5C5] rounded-2xl p-3.5 shadow-xl flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-[#B8863B]/15 flex items-center justify-center shrink-0 mt-0.5">
-            <Users className="w-3.5 h-3.5 text-[#9A6D28]" />
-          </div>
-          <div className="text-[11px] flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] uppercase tracking-widest text-[#9A6D28] font-medium">
-                Hóspede Club
-              </span>
-              <button
-                onClick={() => setShowFomoToast(false)}
-                className="text-[#5C646B] hover:text-[#182026] text-xs cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-            <p className="text-[#465058] mt-0.5 leading-snug line-clamp-2">
-              {LIVE_FOMO_NOTIFICATIONS[fomoIndex]}
-            </p>
-          </div>
-        </div>
-      )}
+
 
       {/* BARRA INFERIOR MOBILE CLARA */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-[#E5DEC9] px-2 py-1.5 shadow-lg">
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-[#E5DEC9] px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))]">
         <div className="grid grid-cols-5 gap-1 max-w-md mx-auto">
           <button
             onClick={() => {
@@ -3182,8 +3166,8 @@ export default function HospedeClubApp() {
         onUpdateHotel={handleUpdateHotelFromExtranet}
       />
 
-      <footer className="bg-[#F3EDE2] text-[#5C646B] border-t border-[#E3DACB] py-10 px-4 sm:px-6 md:px-8 mt-12">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <footer className="bg-[#F3EDE2] text-[#5C646B] border-t border-[#E3DACB] py-8 sm:py-10 px-3 sm:px-6 md:px-8 mt-12 pb-24 lg:pb-10">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6">
           <div>
             <span className="font-editorial text-xl tracking-[0.22em] text-[#182026] font-normal">
               HÓSPEDE CLUB

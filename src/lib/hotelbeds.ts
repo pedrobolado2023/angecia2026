@@ -787,9 +787,9 @@ function getSimulatedHotelbedsAvailability(
       minRate: 1630.0,
       maxRate: 2400.0,
       currency: "BRL",
-      heroImage: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85",
+      heroImage: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=680&q=75&auto=format",
       gallery: [
-        "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
+        "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=680&q=75&auto=format",
       ],
       description: "Empreendimento de alto luxo de frente para o mar com serviços de spa exclusivos.",
       address: "Av. Pref. Mendes de Morais, São Conrado, Rio de Janeiro",
@@ -828,9 +828,9 @@ function getSimulatedHotelbedsAvailability(
       minRate: 2150.0,
       maxRate: 3290.0,
       currency: "BRL",
-      heroImage: "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85",
+      heroImage: "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=680&q=75&auto=format",
       gallery: [
-        "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=85",
+        "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=680&q=75&auto=format",
       ],
       description: "Resort pé na areia com piscinas naturais privativas e gastronomia all-inclusive.",
       address: "Praia de Antunes, Maragogi - AL",
