@@ -17,11 +17,11 @@ RUN ARCH=$(uname -m) && \
     rm wacli.tar.gz && \
     chmod +x /usr/local/bin/wacli
 
-# Instala dependências do gateway
-COPY package.json ./
+# Instala dependências do gateway a partir de services/wacli/
+COPY services/wacli/package.json ./package.json
 RUN npm install --production
 
-COPY server.js ./
+COPY services/wacli/server.js ./server.js
 
 # Diretórios para persistência do banco SQLite e chaves de sessão
 RUN mkdir -p /data/store /data/state /data/config /data/cache
@@ -37,3 +37,4 @@ VOLUME ["/data"]
 EXPOSE 3001
 
 CMD ["node", "server.js"]
+
