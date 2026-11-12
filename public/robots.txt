@@ -1,0 +1,7 @@
+# robots.txt - Hóspede Club
+User-agent: *
+Allow: /
+Disallow: /privado
+Disallow: /api/
+
+Sitemap: https://agentesia-frontagencia2026.4nvzqw.easypanel.host/sitemap.xml

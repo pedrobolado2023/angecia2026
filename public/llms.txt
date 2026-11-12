@@ -1,0 +1,18 @@
+# Hóspede Club
+> Curadoria privada de hospedagens e hotéis no Brasil com condições tarifárias exclusivas e descontos reais para o cliente final.
+
+## Sobre a Plataforma
+O Hóspede Club é um clube de viagens e reservas de hotéis no Brasil. Oferece diárias negociadas diretamente com hotéis, resorts e pousadas boutique com até 35% de economia.
+
+## Principais Destinos Cobertos
+- Rio de Janeiro (RJ): São Conrado, Copacabana, Ipanema, Búzios, Angra dos Reis
+- Gramado & Serra Gaúcha (RS): Vale dos Vinhedos, Bento Gonçalves, Canela
+- Alagoas (AL): Maceió, Maragogi, São Miguel dos Milagres
+- Bahia (BA): Trancoso, Arraial d'Ajuda, Praia do Forte, Salvador
+- Pernambuco (PE): Porto de Galinhas, Praia dos Carneiros, Recife
+
+## Benefícios do Membro
+- Acesso a tarifas secretas de membro
+- 7 dias de acesso VIP gratuito no primeiro cadastro
+- Renovação facilitada por reserva efetuada ou plano mensal de R$ 19,90/mês
+- Pagamento via PIX instantâneo ou Cartão de Crédito em até 12x
