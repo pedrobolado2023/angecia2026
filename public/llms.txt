@@ -16,3 +16,4 @@ O Hóspede Club é um clube de viagens e reservas de hotéis no Brasil. Oferece 
 - 7 dias de acesso VIP gratuito no primeiro cadastro
 - Renovação facilitada por reserva efetuada ou plano mensal de R$ 19,90/mês
 - Pagamento via PIX instantâneo ou Cartão de Crédito em até 12x
+

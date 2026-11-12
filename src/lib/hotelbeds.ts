@@ -453,6 +453,13 @@ export async function searchHotelbedsAvailability(params: {
   }
 }
 
+export interface HotelbedsPax {
+  name: string;
+  surname: string;
+  type?: "AD" | "CH";
+  age?: number;
+}
+
 /**
  * Validação de tarifa antes do fechamento (CheckRate)
  */
@@ -483,6 +490,7 @@ export async function checkHotelbedsRate(rateKey: string): Promise<{
       method: "POST",
       headers: {
         Accept: "application/json",
+        "Accept-Encoding": "gzip",
         "Content-Type": "application/json",
         "Api-key": cfg.apiKey,
         "X-Signature": signature,
@@ -490,6 +498,7 @@ export async function checkHotelbedsRate(rateKey: string): Promise<{
       body: JSON.stringify({
         rooms: [{ rateKey }],
       }),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!res.ok) {
@@ -505,30 +514,34 @@ export async function checkHotelbedsRate(rateKey: string): Promise<{
 }
 
 /**
- * Criação da Reserva confirmada na Hotelbeds
+ * Criação da Reserva confirmada na Hotelbeds (Timeout oficial >= 60s para certificação)
  */
 export async function createHotelbedsBooking(booking: {
   rateKey: string;
   clientReference: string;
   holder: { name: string; surname: string };
-  paxes: Array<{ name: string; surname: string; type?: "AD" | "CH" }>;
+  paxes: HotelbedsPax[];
   remark?: string;
 }): Promise<{
   ok: boolean;
   isSimulation: boolean;
   bookingReference?: string;
   status?: string;
+  supplierRemarks?: string;
+  rawBooking?: any;
   error?: string;
 }> {
   const cfg = getHotelbedsConfig();
 
   // Fallback simulado
   if (!cfg.apiKey || !cfg.secret) {
+    const simRef = `HB-SIM-${Math.floor(100000 + Math.random() * 900000)}`;
     return {
       ok: true,
       isSimulation: true,
-      bookingReference: `HB-SIM-${Math.floor(100000 + Math.random() * 900000)}`,
+      bookingReference: simRef,
       status: "CONFIRMED",
+      supplierRemarks: `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company. VAT: B-60292723. Reference: ${simRef}`,
     };
   }
 
@@ -541,12 +554,18 @@ export async function createHotelbedsBooking(booking: {
       rooms: [
         {
           rateKey: booking.rateKey,
-          paxes: booking.paxes.map((p, idx) => ({
-            roomId: 1,
-            type: p.type || "AD",
-            name: p.name,
-            surname: p.surname,
-          })),
+          paxes: booking.paxes.map((p) => {
+            const paxItem: Record<string, unknown> = {
+              roomId: 1,
+              type: p.type || "AD",
+              name: p.name,
+              surname: p.surname,
+            };
+            if (p.type === "CH" && typeof p.age === "number") {
+              paxItem.age = p.age;
+            }
+            return paxItem;
+          }),
         },
       ],
       clientReference: booking.clientReference,
@@ -554,15 +573,18 @@ export async function createHotelbedsBooking(booking: {
       tolerance: 2.0,
     };
 
+    // Certificação Hotelbeds: Timeout mínimo de 60 segundos
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
+        "Accept-Encoding": "gzip",
         "Content-Type": "application/json",
         "Api-key": cfg.apiKey,
         "X-Signature": signature,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(65000),
     });
 
     const data = await res.json();
@@ -575,11 +597,18 @@ export async function createHotelbedsBooking(booking: {
       };
     }
 
+    const hbRef = data.booking?.reference || `HB-${Date.now()}`;
+    const supplierRemarks =
+      data.booking?.supplier?.remarks ||
+      `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company. VAT: B-60292723. Reference: ${hbRef}`;
+
     return {
       ok: true,
       isSimulation: false,
-      bookingReference: data.booking?.reference,
+      bookingReference: hbRef,
       status: data.booking?.status || "CONFIRMED",
+      supplierRemarks,
+      rawBooking: data.booking,
     };
   } catch (err: unknown) {
     return {

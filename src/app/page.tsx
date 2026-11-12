@@ -218,6 +218,7 @@ export default function HospedeClubApp() {
   const [guestEmail, setGuestEmail] = useState<string>("membro@hospedeclub.com.br");
   const [guestWhatsapp, setGuestWhatsapp] = useState<string>("+55 (11) 99812-4400");
   const [bookingConfirmedVoucher, setBookingConfirmedVoucher] = useState<string | null>(null);
+  const [bookingSupplierRemarks, setBookingSupplierRemarks] = useState<string | null>(null);
   const [webhookStatusText, setWebhookStatusText] = useState<string | null>(null);
 
   const [isPricingDrawerOpen, setIsPricingDrawerOpen] = useState<boolean>(false);
@@ -984,6 +985,15 @@ export default function HospedeClubApp() {
         body: JSON.stringify({
           hotelId: selectedHotel.id,
           roomId: selectedRoom.id,
+          hotelName: selectedHotel.name,
+          hotelbedsCode: (selectedHotel as any).hotelbedsCode,
+          rateKey: (selectedRoom as any).rates?.[0]?.rateKey,
+          roomName: selectedRoom.name,
+          boardName: (selectedHotel as any).scarcityLabel || (selectedRoom as any).rates?.[0]?.boardName,
+          netRate: selectedRoom.netRate,
+          barRate: selectedRoom.barRate,
+          hotelAddress: (selectedHotel as any).address || (selectedHotel as any).primaryLandmarkDistance,
+          cityName: selectedHotel.cityName,
           nights: nightsCount,
           guests: totalGuestsCount,
           adults: adultsCount,
@@ -1026,6 +1036,7 @@ export default function HospedeClubApp() {
       }
 
       setBookingConfirmedVoucher(data.voucherCode || generatedVoucher);
+      setBookingSupplierRemarks(data.supplierRemarks || null);
       setPostgresSavedStatus(Boolean(data.postgres?.saved));
 
       if (paymentMethod === "pix" && data.mercadoPago?.pix) {
@@ -2817,9 +2828,28 @@ export default function HospedeClubApp() {
                     <p className="text-xs text-[#0F5257] font-medium">{webhookStatusText}</p>
                   )}
 
-                  <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs text-[#5C646B] space-y-1">
+                  <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs text-[#5C646B] space-y-1.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-[#EAE3D5]">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-[#8C7A5B] block">Propriedade & Local</span>
+                        <strong className="text-[#182026] text-sm block">{selectedHotel.name}</strong>
+                        <span className="text-[11px] text-[#7A828A]">
+                          {(selectedHotel as any).address || (selectedHotel as any).primaryLandmarkDistance || selectedHotel.cityName}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-[#8C7A5B] block">Período & Regime</span>
+                        <strong className="text-[#182026] text-xs block">
+                          Check-in: {checkInDate} • {nightsCount} {nightsCount === 1 ? "noite" : "noites"}
+                        </strong>
+                        <span className="text-[11px] text-[#0F5257] font-semibold">
+                          {selectedRoom.name} • {(selectedHotel as any).scarcityLabel || "Café da Manhã Incluso"}
+                        </span>
+                      </div>
+                    </div>
+
                     <p>
-                      <strong>Titular:</strong> {primaryFirstName} {primaryLastName} ({primaryEmail})
+                      <strong>Titular da Reserva:</strong> {primaryFirstName} {primaryLastName} ({primaryEmail})
                     </p>
                     <p>
                       <strong>CPF:</strong> {primaryCpf} • <strong>WhatsApp:</strong> {primaryWhatsapp}
@@ -2830,6 +2860,13 @@ export default function HospedeClubApp() {
                         {secondGuestCpf ? ` (CPF: ${secondGuestCpf})` : ""}
                       </p>
                     )}
+
+                    {/* Cláusula Legal Obrigatória do Fornecedor para Certificação Hotelbeds APItude */}
+                    <div className="mt-2 pt-2 border-t border-[#EAE3D5] text-[10px] text-[#7A828A] leading-relaxed">
+                      <strong className="text-[#182026] block mb-0.5">Nota Legal do Fornecedor (Supplier Notice):</strong>
+                      {bookingSupplierRemarks ||
+                        `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company, details of which can be provided upon request. VAT: B-60292723 Reference: ${bookingConfirmedVoucher}`}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#EAE3D5]">
