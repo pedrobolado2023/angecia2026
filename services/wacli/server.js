@@ -64,9 +64,10 @@ function triggerAuth() {
     env: { ...process.env, WACLI_STORE_DIR: STORE_DIR },
   });
 
-  authProc.stdout.on("data", async (data) => {
+  const handleAuthOutput = async (data) => {
     const str = data.toString().trim();
-    if (str.length > 20) {
+    console.log(`[WACLI AUTH OUTPUT] ${str}`);
+    if (str.length > 15) {
       currentRawQr = str;
       try {
         currentQrCode = await QRCode.toDataURL(str);
@@ -76,7 +77,10 @@ function triggerAuth() {
         console.error("Erro ao converter QR Code para imagem:", err);
       }
     }
-  });
+  };
+
+  authProc.stdout.on("data", handleAuthOutput);
+  authProc.stderr.on("data", handleAuthOutput);
 
   authProc.on("close", (code) => {
     console.log(`[WACLI AUTH] Processo de autenticação concluído com código ${code}`);
@@ -273,3 +277,4 @@ app.listen(PORT, () => {
     triggerAuth();
   }
 });
+

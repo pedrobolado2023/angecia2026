@@ -1,11 +1,16 @@
 # ==============================================================================
 # HÓSPEDE CLUB • WACLI GATEWAY DOCKERFILE
-# Baixa o binário oficial openclaw/wacli v0.26.0 (Go) com gateway HTTP Node.js
+# Utiliza Debian Slim (glibc) para compatibilidade nativa com o binário Go CGO
 # ==============================================================================
 
-FROM node:20-alpine
+FROM node:20-slim
 
-RUN apk add --no-cache ca-certificates curl tzdata libc6-compat
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    tar \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -37,4 +42,5 @@ VOLUME ["/data"]
 EXPOSE 3001
 
 CMD ["node", "server.js"]
+
 
