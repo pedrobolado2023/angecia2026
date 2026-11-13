@@ -14,6 +14,7 @@ import {
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { isValidCPF } from "@/lib/cpfValidator";
 import { translateHotelbedsRoomName } from "@/lib/hotelbeds";
+import { resolveRoomCancellationPolicy } from "@/lib/cancellationPolicy";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
@@ -579,44 +580,12 @@ export default function HospedeClubApp() {
     });
   };
 
-  const getRoomCancellationInfo = useCallback((room: any) => {
-    const rate = room?.rates?.[0];
-    const isNrf =
-      rate?.rateClass === "NRF" ||
-      /não reembolsável|non-refundable|nrf/i.test(room?.boardBasis || "") ||
-      /não reembolsável/i.test(room?.name || "");
-    const firstCp = rate?.cancellationPolicies?.[0];
-
-    if (firstCp && firstCp.from) {
-      try {
-        const parts = firstCp.from.split("T")[0].split("-");
-        const d = `${parts[2]}/${parts[1]}/${parts[0]}`;
-        return {
-          label: `Cancelamento Grátis até ${d}`,
-          badgeClass: "bg-[#0F5257]/10 text-[#0F5257] border-[#0F5257]/20",
-          details: `Você pode cancelar gratuitamente com reembolso integral de 100% até o dia ${d}. Após este prazo, incidirá a penalidade da política do hotel.`,
-        };
-      } catch {
-        // fallback
-      }
-    }
-
-    if (isNrf) {
-      return {
-        label: "Tarifa Promocional Não Reembolsável (Desconto VIP)",
-        badgeClass: "bg-[#B83B2B]/10 text-[#B83B2B] border-[#B83B2B]/20",
-        details:
-          "Esta acomodação possui tarifa promocional com desconto agressivo exclusivo para membros. Não permite cancelamento com reembolso em caso de desistência voluntária.",
-      };
-    }
-
-    return {
-      label: "Cancelamento Grátis até 48h antes do check-in",
-      badgeClass: "bg-[#0F5257]/10 text-[#0F5257] border-[#0F5257]/20",
-      details:
-        "Cancelamento sem custos até 48 horas antes da data de check-in informada na reserva.",
-    };
-  }, []);
+  const getRoomCancellationInfo = useCallback(
+    (room: any) => {
+      return resolveRoomCancellationPolicy(room, checkInDate);
+    },
+    [checkInDate]
+  );
 
   const fetchLiveHotelbedsHotels = useCallback(
     async (
@@ -3945,7 +3914,7 @@ export default function HospedeClubApp() {
                     </div>
                     <div className="flex justify-between items-center text-[#5C646B] pt-0.5">
                       <span>Política da acomodação:</span>
-                      <span className="text-[10px] font-semibold text-[#0F5257] bg-[#0F5257]/10 px-2 py-0.5 rounded-md">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${getRoomCancellationInfo(selectedRoom).badgeClass}`}>
                         {getRoomCancellationInfo(selectedRoom).label}
                       </span>
                     </div>

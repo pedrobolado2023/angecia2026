@@ -126,38 +126,75 @@ export function LegalTermsModal({
           {activeTab === "cancelamento" && (
             <div className="space-y-4">
               {cancellationText ? (
-                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                <div className="p-3.5 rounded-xl bg-[#0F5257]/5 border border-[#0F5257]/20 text-[#0F5257]">
                   <strong className="block text-xs uppercase tracking-wider mb-1">
-                    Condição desta Acomodação {hotelName ? `(${hotelName})` : ""}:
+                    Condição Específica desta Acomodação {hotelName ? `(${hotelName})` : ""}:
                   </strong>
-                  <p className="text-xs font-medium">{cancellationText}</p>
+                  <p className="text-xs font-medium leading-relaxed">{cancellationText}</p>
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-[#0F5257]/5 border border-[#0F5257]/20">
-                  <span className="font-semibold text-xs text-[#0F5257] block mb-1">
-                    Tarifa Reembolsável:
-                  </span>
-                  <p className="text-[11px] text-[#5C646B]">
-                    Permite cancelamento gratuito com estorno integral de 100% no mesmo meio de pagamento, se solicitado dentro do prazo limite informado no voucher.
-                  </p>
-                </div>
+              {/* Regra de Check-in no Mesmo Dia ou Dia Seguinte */}
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
+                <strong className="block text-[11px] uppercase tracking-wider mb-0.5 font-bold">
+                  ⚡ Reservas de Última Hora (Mesmo Dia ou Dia Seguinte):
+                </strong>
+                <span>
+                  Reservas efetuadas para o mesmo dia ou para o dia seguinte configuram-se automaticamente como <strong>Não Reembolsáveis</strong>. Em caso de cancelamento, alteração ou não comparecimento, será retida multa de 100% do valor pago.
+                </span>
+              </div>
 
-                <div className="p-3 rounded-xl bg-[#B83B2B]/5 border border-[#B83B2B]/20">
-                  <span className="font-semibold text-xs text-[#B83B2B] block mb-1">
-                    Tarifa Não Reembolsável (NRF):
-                  </span>
-                  <p className="text-[11px] text-[#5C646B]">
-                    Tarifa promocional com tarifa negociada agressiva. Não permite estorno financeiro em caso de cancelamento voluntário ou no-show.
-                  </p>
+              {/* Política Oficial Completa de Cancelamento e Alteração */}
+              <div className="space-y-3 pt-2">
+                <h4 className="font-semibold text-sm text-[#182026] border-b border-[#F0EAE0] pb-1">
+                  Política Oficial de Cancelamento e Alteração de Data:
+                </h4>
+                
+                <div className="space-y-2.5 text-xs text-[#465058]">
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5]">
+                    <strong className="text-[#182026] block mb-1">1º) Cancelamento:</strong>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      <li><strong>a) Gratuito:</strong> Se o cancelamento for feito até 14 dias antes do check-in.</li>
+                      <li><strong>b) 50% do valor total da reserva:</strong> Se o cancelamento ocorrer até 01 dia antes do check-in.</li>
+                      <li><strong>c) 100% do valor total da reserva:</strong> Se o cancelamento ocorrer no mesmo dia do check-in.</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5]">
+                    <strong className="text-[#182026] block mb-1">2º) No-show (Não Comparecimento):</strong>
+                    <p>Em caso de não comparecimento para hospedagem, será cobrada uma multa de 100% do valor pago.</p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5]">
+                    <strong className="text-[#182026] block mb-1">3º) Saída Antecipada:</strong>
+                    <p>Caso haja saída antecipada do hotel, o valor pago não será reembolsado.</p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5]">
+                    <strong className="text-[#182026] block mb-1">4º) Pré-pagamento:</strong>
+                    <p>O pagamento total da reserva deverá ser efetuado no momento da confirmação. A reserva será considerada garantida somente após a confirmação do pagamento integral.</p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5]">
+                    <strong className="text-[#182026] block mb-1">5º) Alteração de Data:</strong>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      <li>a) A política de cancelamento será alterada automaticamente para Não Reembolsável.</li>
+                      <li>b) A reserva será ajustada conforme o tarifário vigente para o novo período desejado.</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5]">
+                    <strong className="text-[#182026] block mb-1">6º) Tarifa Não Reembolsável:</strong>
+                    <p>Para reservas efetuadas durante períodos especiais, como Réveillon, Natal, Carnaval e Feriados Nacionais, a tarifa será não reembolsável. Em caso de cancelamento ou alteração, não haverá reembolso do valor pago.</p>
+                  </div>
                 </div>
               </div>
 
-              <h4 className="font-semibold text-sm text-[#182026]">Prazos de Estorno</h4>
-              <p>
-                Para cancelamentos elegíveis: no PIX o estorno é processado em 24 a 48h úteis; no Cartão de Crédito é efetuado imediatamente junto ao Mercado Pago (o crédito ocorre na fatura atual ou seguinte).
-              </p>
+              <div className="pt-2 text-[11px] text-[#5C646B] border-t border-[#F0EAE0]">
+                <p>
+                  * <strong>Prevalência da Operadora Hoteleira:</strong> Caso a Hotelbeds disponibilize a política de cancelamento específica do hotel parceiro, as condições informadas pela Hotelbeds prevalecem. Quando o hotel não disponibilizar política própria, aplica-se integralmente a Política Oficial Padrão do Hóspede Club detalhada acima.
+                </p>
+              </div>
             </div>
           )}
 
