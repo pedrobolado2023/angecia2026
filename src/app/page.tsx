@@ -80,6 +80,19 @@ const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
   "caldas-rio-quente-pirenopolis": "BSB",
   "balneario-florianopolis-penha": "FLN",
   "fortaleza-jeri-natal-pipa": "FOR",
+  // Capitais e Destinos Nacionais Diretos
+  "sao-paulo": "SAO",
+  "brasilia": "BSB",
+  "salvador": "SSA",
+  "curitiba": "CWB",
+  "belo-horizonte": "BHZ",
+  "florianopolis": "FLN",
+  "porto-alegre": "POA",
+  "recife": "REC",
+  "fortaleza": "FOR",
+  "natal": "NAT",
+  "maceio": "MCZ",
+  "goiania": "GYN",
 };
 
 export default function HospedeClubApp() {
@@ -139,7 +152,61 @@ export default function HospedeClubApp() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const [checkInDate, setCheckInDate] = useState<string>("2026-11-13");
+  const [checkOutDate, setCheckOutDate] = useState<string>("2026-11-14");
   const [nightsCount, setNightsCount] = useState<number>(1);
+
+  const getTodayString = useCallback(() => {
+    return new Date().toISOString().split("T")[0];
+  }, []);
+
+  const addDaysToString = useCallback((dateStr: string, days: number) => {
+    try {
+      const parts = dateStr.split("-").map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      d.setDate(d.getDate() + days);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    } catch {
+      return dateStr;
+    }
+  }, []);
+
+  const calculateDaysDiff = useCallback((startStr: string, endStr: string) => {
+    try {
+      const p1 = startStr.split("-").map(Number);
+      const p2 = endStr.split("-").map(Number);
+      const d1 = new Date(p1[0], p1[1] - 1, p1[2]).getTime();
+      const d2 = new Date(p2[0], p2[1] - 1, p2[2]).getTime();
+      const diff = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+      return Math.max(1, diff);
+    } catch {
+      return 1;
+    }
+  }, []);
+
+  const handleCheckInChange = (newCheckIn: string) => {
+    setCheckInDate(newCheckIn);
+    if (!checkOutDate || newCheckIn >= checkOutDate) {
+      const nextOut = addDaysToString(newCheckIn, nightsCount > 0 ? nightsCount : 1);
+      setCheckOutDate(nextOut);
+    } else {
+      setNightsCount(calculateDaysDiff(newCheckIn, checkOutDate));
+    }
+  };
+
+  const handleCheckOutChange = (newCheckOut: string) => {
+    if (newCheckOut <= checkInDate) {
+      const adjustedCheckIn = addDaysToString(newCheckOut, -1);
+      setCheckInDate(adjustedCheckIn);
+      setCheckOutDate(newCheckOut);
+      setNightsCount(1);
+    } else {
+      setCheckOutDate(newCheckOut);
+      setNightsCount(calculateDaysDiff(checkInDate, newCheckOut));
+    }
+  };
   const [adultsCount, setAdultsCount] = useState<number>(2);
   const [childrenCount, setChildrenCount] = useState<number>(0);
   const [infantsCount, setInfantsCount] = useState<number>(0);
@@ -419,16 +486,16 @@ export default function HospedeClubApp() {
   };
 
   const fetchLiveHotelbedsHotels = useCallback(
-    async (destinationCode: string = "RIO", targetCityId?: string) => {
+    async (
+      destinationCode: string = "RIO",
+      targetCityId?: string,
+      customCheckIn?: string,
+      customCheckOut?: string
+    ) => {
       setIsHotelbedsLoading(true);
       try {
-        const today = new Date();
-        const checkIn = new Date(today.getTime() + 7 * 86400000)
-          .toISOString()
-          .split("T")[0];
-        const checkOut = new Date(today.getTime() + 10 * 86400000)
-          .toISOString()
-          .split("T")[0];
+        const checkIn = customCheckIn || checkInDate;
+        const checkOut = customCheckOut || checkOutDate;
 
         const res = await fetch(
           `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}&adults=${adultsCount}&children=${childrenCount}`
@@ -773,6 +840,40 @@ export default function HospedeClubApp() {
       return;
     }
 
+    // 1.1 Mapeamento inteligente para capitais e polos turísticos nacionais
+    const destinationAliases: Record<string, { cityId: string; hbCode: string }> = {
+      brasilia: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+      "distrito federal": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+      df: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+      taguatinga: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+      "sao paulo": { cityId: "campos-monte-verde", hbCode: "SAO" },
+      sp: { cityId: "campos-monte-verde", hbCode: "SAO" },
+      salvador: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
+      bahia: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
+      curitiba: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
+      parana: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
+      florianopolis: { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
+      "porto alegre": { cityId: "gramado-canela", hbCode: "POA" },
+      "rio de janeiro": { cityId: "rio-de-janeiro", hbCode: "RIO" },
+      rio: { cityId: "rio-de-janeiro", hbCode: "RIO" },
+      maceio: { cityId: "maceio-maragogi", hbCode: "MCZ" },
+      recife: { cityId: "porto-de-galinhas", hbCode: "REC" },
+      fortaleza: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "FOR" },
+      natal: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "NAT" },
+      goiania: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "GYN" },
+      "belo horizonte": { cityId: "campos-monte-verde", hbCode: "BHZ" },
+    };
+
+    for (const [key, mapping] of Object.entries(destinationAliases)) {
+      if (q.includes(key) || (cleanQ !== "" && cleanQ.includes(key))) {
+        setSelectedCityId(mapping.cityId);
+        setActiveScreen("destination");
+        fetchLiveHotelbedsHotels(mapping.hbCode, mapping.cityId, checkInDate, checkOutDate);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    }
+
     // 2. SEGUNDO: Verifica se corresponde a um hotel específico do catálogo pelo nome
     const matchedHotel = hotelsCatalog.find((hotel) => {
       const hotelNameNorm = normalizeForSearch(hotel.name);
@@ -861,6 +962,7 @@ export default function HospedeClubApp() {
         query: matchedCity.name,
         destinationName: `${matchedCity.name} (${matchedCity.stateCode})`,
         checkInDate,
+        checkOutDate,
         nights: nightsCount,
         guests: totalGuestsCount,
         adults: adultsCount,
@@ -872,9 +974,9 @@ export default function HospedeClubApp() {
     setActiveScreen("destination");
     setMobileMenuOpen(false);
 
-    // Consulta disponibilidade na Hotelbeds para o destino selecionado
+    // Consulta disponibilidade na Hotelbeds para o destino selecionado com as datas selecionadas
     const hbCode = CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
-    fetchLiveHotelbedsHotels(hbCode, cityId);
+    fetchLiveHotelbedsHotels(hbCode, cityId, checkInDate, checkOutDate);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -922,6 +1024,7 @@ export default function HospedeClubApp() {
       estimatedTotal: pricing.pix.pixPrice * nightsCount + extraFees,
       nights: nightsCount,
       checkInDate,
+      checkOutDate,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1068,6 +1171,7 @@ export default function HospedeClubApp() {
           children: childrenCount,
           infants: infantsCount,
           checkInDate,
+          checkOutDate,
           paymentModality: paymentMethod === "pix" ? "PIX" : "CARD",
           installments: selectedInstallments,
 
@@ -1531,42 +1635,48 @@ export default function HospedeClubApp() {
                     </div>
                   </div>
 
-                  <div className="lg:col-span-3 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-3 sm:pb-0 lg:pr-4">
-                    <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium mb-1.5">
-                      Data & Estadia
-                    </label>
-                    <div className="flex items-center gap-2 text-xs text-[#182026]">
-                      <input
-                        type="date"
-                        value={checkInDate}
-                        onChange={(e) => setCheckInDate(e.target.value)}
-                        className="bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] w-full"
-                      />
-                      <select
-                        value={nightsCount}
-                        onChange={(e) => setNightsCount(Number(e.target.value))}
-                        className="bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border border-[#E2D9C8] cursor-pointer shrink-0"
-                      >
-                        <option value={1} className="bg-white">1 diária</option>
-                        <option value={2} className="bg-white">2 diárias</option>
-                        <option value={3} className="bg-white">3 diárias</option>
-                        <option value={4} className="bg-white">4 diárias</option>
-                        <option value={5} className="bg-white">5 diárias</option>
-                        <option value={6} className="bg-white">6 diárias</option>
-                        <option value={7} className="bg-white">7 diárias</option>
-                        <option value={8} className="bg-white">8 diárias</option>
-                        <option value={9} className="bg-white">9 diárias</option>
-                        <option value={10} className="bg-white">10 diárias</option>
-                        <option value={14} className="bg-white">14 diárias</option>
-                        <option value={21} className="bg-white">21 diárias</option>
-                        <option value={30} className="bg-white">30 diárias</option>
-                      </select>
+                  <div className="sm:col-span-2 lg:col-span-4 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-3 sm:pb-0 lg:pr-4">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium">
+                        Check-in & Check-out
+                      </label>
+                      <span className="text-[10px] font-semibold text-[#9A6D28] bg-[#F4E8D1] px-2 py-0.5 rounded-full">
+                        {nightsCount} {nightsCount === 1 ? "diária" : "diárias"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wider text-[#5C646B] mb-0.5 flex items-center gap-1 font-medium">
+                          <Calendar className="w-3 h-3 text-[#B8863B]" />
+                          <span>Entrada</span>
+                        </div>
+                        <input
+                          type="date"
+                          value={checkInDate}
+                          min={getTodayString()}
+                          onChange={(e) => handleCheckInChange(e.target.value)}
+                          className="bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] w-full cursor-pointer font-medium"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wider text-[#5C646B] mb-0.5 flex items-center gap-1 font-medium">
+                          <Calendar className="w-3 h-3 text-[#B8863B]" />
+                          <span>Saída</span>
+                        </div>
+                        <input
+                          type="date"
+                          value={checkOutDate}
+                          min={addDaysToString(checkInDate, 1)}
+                          onChange={(e) => handleCheckOutChange(e.target.value)}
+                          className="bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] w-full cursor-pointer font-medium"
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div
                     ref={guestsSelectorContainerRef}
-                    className="relative lg:col-span-2 pb-2 sm:pb-0"
+                    className="relative sm:col-span-1 lg:col-span-2 pb-2 sm:pb-0"
                   >
                     <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium mb-1.5">
                       Hóspedes
@@ -1708,7 +1818,7 @@ export default function HospedeClubApp() {
                     )}
                   </div>
 
-                  <div className="sm:col-span-2 lg:col-span-3">
+                  <div className="sm:col-span-1 lg:col-span-2">
                     <button
                       onClick={handleExecuteHeroSearch}
                       className="w-full py-3.5 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
@@ -3059,7 +3169,7 @@ export default function HospedeClubApp() {
                       <div>
                         <span className="text-[10px] uppercase font-bold text-[#8C7A5B] block">Período & Regime</span>
                         <strong className="text-[#182026] text-xs block">
-                          Check-in: {checkInDate} • {nightsCount} {nightsCount === 1 ? "noite" : "noites"}
+                          Check-in: {checkInDate} → Check-out: {checkOutDate} ({nightsCount} {nightsCount === 1 ? "diária" : "diárias"})
                         </strong>
                         <span className="text-[11px] text-[#0F5257] font-semibold">
                           {selectedRoom.name} • {(selectedHotel as any).scarcityLabel || "Café da Manhã Incluso"}
