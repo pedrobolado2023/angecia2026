@@ -812,6 +812,139 @@ export async function createHotelbedsBooking(booking: {
 }
 
 /**
+ * Consulta de detalhes da reserva na Hotelbeds APItude (BookingDetail)
+ * Endpoint: GET /hotel-api/1.0/bookings/{bookingReference}
+ */
+export async function getHotelbedsBookingDetail(bookingReference: string): Promise<{
+  ok: boolean;
+  isSimulation: boolean;
+  booking?: any;
+  error?: string;
+}> {
+  const cfg = getHotelbedsConfig();
+  if (!cfg.apiKey || !cfg.secret) {
+    return {
+      ok: true,
+      isSimulation: true,
+      booking: {
+        reference: bookingReference,
+        status: "CONFIRMED",
+        isSimulation: true,
+      },
+    };
+  }
+
+  try {
+    const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
+    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/bookings/${encodeURIComponent(bookingReference)}`;
+
+    const res = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip",
+        "Api-key": cfg.apiKey,
+        "X-Signature": signature,
+      },
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return {
+        ok: false,
+        isSimulation: false,
+        error: data.error?.message || `Erro ao consultar reserva (${res.status})`,
+      };
+    }
+
+    return {
+      ok: true,
+      isSimulation: false,
+      booking: data.booking,
+    };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      isSimulation: false,
+      error: err instanceof Error ? err.message : "Falha ao consultar reserva na Hotelbeds",
+    };
+  }
+}
+
+/**
+ * Cancelamento de Reserva na Hotelbeds APItude (BookingCancel)
+ * Endpoint: DELETE /hotel-api/1.0/bookings/{bookingReference}?cancellationFlag=SIMULATION | CANCELLATION
+ */
+export async function cancelHotelbedsBooking(
+  bookingReference: string,
+  flag: "SIMULATION" | "CANCELLATION" = "CANCELLATION"
+): Promise<{
+  ok: boolean;
+  isSimulation: boolean;
+  cancellationAmount?: number;
+  status?: string;
+  booking?: any;
+  error?: string;
+}> {
+  const cfg = getHotelbedsConfig();
+  if (!cfg.apiKey || !cfg.secret) {
+    return {
+      ok: true,
+      isSimulation: true,
+      cancellationAmount: 0,
+      status: "CANCELLED",
+      booking: {
+        reference: bookingReference,
+        status: "CANCELLED",
+        isSimulation: true,
+      },
+    };
+  }
+
+  try {
+    const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
+    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/bookings/${encodeURIComponent(
+      bookingReference
+    )}?cancellationFlag=${flag}`;
+
+    const res = await fetch(endpoint, {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip",
+        "Api-key": cfg.apiKey,
+        "X-Signature": signature,
+      },
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return {
+        ok: false,
+        isSimulation: false,
+        error: data.error?.message || `Erro ao cancelar reserva (${res.status})`,
+      };
+    }
+
+    return {
+      ok: true,
+      isSimulation: false,
+      cancellationAmount: data.booking?.cancellationAmount,
+      status: data.booking?.status || "CANCELLED",
+      booking: data.booking,
+    };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      isSimulation: false,
+      error: err instanceof Error ? err.message : "Falha ao processar cancelamento na Hotelbeds",
+    };
+  }
+}
+
+/**
  * Catálogo resiliente de contingência da Hotelbeds APItude com hotéis e fotos reais do CDN GIATA
  */
 function getSimulatedHotelbedsAvailability(
