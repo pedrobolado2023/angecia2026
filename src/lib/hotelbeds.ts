@@ -344,99 +344,101 @@ export async function fetchHotelbedsContent(
 
   const contentBaseUrl = cfg.baseUrl.replace(/\/hotel-api\/.*$/, "");
 
-  for (const chunk of chunks) {
-    try {
-      const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-      const codesStr = chunk.join(",");
-      const url = `${contentBaseUrl}/hotel-content-api/1.0/hotels?codes=${codesStr}&language=POR&fields=all`;
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
+        const codesStr = chunk.join(",");
+        const url = `${contentBaseUrl}/hotel-content-api/1.0/hotels?codes=${codesStr}&language=POR&fields=all`;
 
-      const res = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Api-key": cfg.apiKey,
-          "X-Signature": signature,
-          Accept: "application/json",
-        },
-        cache: "no-store",
-      });
+        const res = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Api-key": cfg.apiKey,
+            "X-Signature": signature,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const hotels = data.hotels || (data.hotel ? [data.hotel] : []);
-        for (const h of hotels) {
-          const rawImages = h.images || [];
-          const genImages: string[] = [];
-          const poolImages: string[] = [];
-          const habImages: string[] = [];
-          const allImages: string[] = [];
-          const roomImages: Record<string, string[]> = {};
-          const roomTypeImages: Record<string, string[]> = {};
+        if (res.ok) {
+          const data = await res.json();
+          const hotels = data.hotels || (data.hotel ? [data.hotel] : []);
+          for (const h of hotels) {
+            const rawImages = h.images || [];
+            const genImages: string[] = [];
+            const poolImages: string[] = [];
+            const habImages: string[] = [];
+            const allImages: string[] = [];
+            const roomImages: Record<string, string[]> = {};
+            const roomTypeImages: Record<string, string[]> = {};
 
-          for (const img of rawImages) {
-            if (!img.path) continue;
-            // Limpa timestamps duplicados após '?' que alguns registros trazem
-            const cleanPath = String(img.path).split("?")[0];
-            const fullUrl = `https://photos.hotelbeds.com/giata/bigger/${cleanPath}`;
-            allImages.push(fullUrl);
+            for (const img of rawImages) {
+              if (!img.path) continue;
+              // Limpa timestamps duplicados após '?' que alguns registros trazem
+              const cleanPath = String(img.path).split("?")[0];
+              const fullUrl = `https://photos.hotelbeds.com/giata/bigger/${cleanPath}`;
+              allImages.push(fullUrl);
 
-            if (img.imageTypeCode === "GEN") {
-              genImages.push(fullUrl);
-            } else if (img.imageTypeCode === "PIS") {
-              poolImages.push(fullUrl);
-            } else if (img.imageTypeCode === "HAB") {
-              habImages.push(fullUrl);
-            }
-
-            if (img.roomCode) {
-              if (!roomImages[img.roomCode]) {
-                roomImages[img.roomCode] = [];
+              if (img.imageTypeCode === "GEN") {
+                genImages.push(fullUrl);
+              } else if (img.imageTypeCode === "PIS") {
+                poolImages.push(fullUrl);
+              } else if (img.imageTypeCode === "HAB") {
+                habImages.push(fullUrl);
               }
-              roomImages[img.roomCode].push(fullUrl);
+
+              if (img.roomCode) {
+                if (!roomImages[img.roomCode]) {
+                  roomImages[img.roomCode] = [];
+                }
+                roomImages[img.roomCode].push(fullUrl);
+              }
+
+              if (img.roomType) {
+                const rt = String(img.roomType).toUpperCase();
+                if (!roomTypeImages[rt]) {
+                  roomTypeImages[rt] = [];
+                }
+                roomTypeImages[rt].push(fullUrl);
+              }
             }
 
-            if (img.roomType) {
-              const rt = String(img.roomType).toUpperCase();
-              if (!roomTypeImages[rt]) {
-                roomTypeImages[rt] = [];
-              }
-              roomTypeImages[rt].push(fullUrl);
-            }
+            // Hero image: Prioriza fachada real (GEN), depois piscina (PIS), depois fotos de acomodação (HAB), depois primeira disponível
+            const heroImage = genImages[0] || poolImages[0] || habImages[0] || allImages[0] || undefined;
+            // Galeria prioritária: Fachada -> Piscina -> Acomodações reais -> Demais fotos da propriedade
+            const sortedGallery = Array.from(new Set([...genImages, ...poolImages, ...habImages, ...allImages])).slice(0, 12);
+
+            const facilities = (h.facilities || [])
+              .map((f: any) => f.description?.content)
+              .filter(Boolean)
+              .slice(0, 10);
+
+            const contentItem: HotelbedsContentData = {
+              code: h.code,
+              name: h.name?.content || h.name,
+              description: h.description?.content,
+              address: h.address?.content,
+              city: h.city?.content,
+              postalCode: h.postalCode,
+              coordinates: h.coordinates,
+              heroImage,
+              gallery: sortedGallery,
+              facilities,
+              roomImages,
+              roomTypeImages,
+              habImages,
+            };
+
+            contentCache.set(h.code, { timestamp: now, data: contentItem });
+            result[h.code] = contentItem;
           }
-
-          // Hero image: Prioriza fachada real (GEN), depois piscina (PIS), depois fotos de acomodação (HAB), depois primeira disponível
-          const heroImage = genImages[0] || poolImages[0] || habImages[0] || allImages[0] || undefined;
-          // Galeria prioritária: Fachada -> Piscina -> Acomodações reais -> Demais fotos da propriedade
-          const sortedGallery = Array.from(new Set([...genImages, ...poolImages, ...habImages, ...allImages])).slice(0, 12);
-
-          const facilities = (h.facilities || [])
-            .map((f: any) => f.description?.content)
-            .filter(Boolean)
-            .slice(0, 10);
-
-          const contentItem: HotelbedsContentData = {
-            code: h.code,
-            name: h.name?.content || h.name,
-            description: h.description?.content,
-            address: h.address?.content,
-            city: h.city?.content,
-            postalCode: h.postalCode,
-            coordinates: h.coordinates,
-            heroImage,
-            gallery: sortedGallery,
-            facilities,
-            roomImages,
-            roomTypeImages,
-            habImages,
-          };
-
-          contentCache.set(h.code, { timestamp: now, data: contentItem });
-          result[h.code] = contentItem;
         }
+      } catch (err) {
+        console.warn("[Hotelbeds Content API] Falha no chunk:", err);
       }
-    } catch (err) {
-      console.warn("[Hotelbeds Content API] Falha no chunk:", err);
-    }
-  }
+    })
+  );
 
   return result;
 }

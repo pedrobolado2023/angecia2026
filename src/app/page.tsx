@@ -1820,11 +1820,22 @@ export default function HospedeClubApp() {
 
                   <div className="sm:col-span-1 lg:col-span-2">
                     <button
+                      type="button"
                       onClick={handleExecuteHeroSearch}
-                      className="w-full py-3.5 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={isHotelbedsLoading}
+                      className="w-full py-3.5 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80 disabled:cursor-wait"
                     >
-                      <span>Explorar Tarifas</span>
-                      <ChevronRight className="w-4 h-4 shrink-0" />
+                      {isHotelbedsLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 shrink-0 animate-spin" />
+                          <span>Buscando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Explorar Tarifas</span>
+                          <ChevronRight className="w-4 h-4 shrink-0" />
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1832,26 +1843,37 @@ export default function HospedeClubApp() {
                 {/* STATUS BAR DE TARIFAS AO VIVO */}
                 <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex flex-wrap items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span className="text-[#0F5257] font-medium">
-                      {hotelbedsLiveBadge?.synced
-                        ? `Tarifas ao vivo sincronizadas (${hotelbedsLiveBadge.total} propriedades verificadas)`
-                        : "Conectado ao canal oficial • Atualizando tarifas ao vivo..."}
-                    </span>
-                    {hotelbedsLiveBadge?.lastUpdated && (
-                      <span className="text-[11px] text-[#5C646B] hidden sm:inline">
-                        • Atualizado às {hotelbedsLiveBadge.lastUpdated}
-                      </span>
+                    {isHotelbedsLoading ? (
+                      <>
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#B8863B] animate-ping shrink-0" />
+                        <span className="text-[#9A6D28] font-semibold animate-pulse">
+                          Buscando todos os hotéis da região em tempo real...
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="text-[#0F5257] font-medium">
+                          {hotelbedsLiveBadge?.synced
+                            ? `Tarifas ao vivo sincronizadas (${hotelbedsLiveBadge.total} propriedades verificadas)`
+                            : "Conectado ao canal oficial • Atualizando tarifas ao vivo..."}
+                        </span>
+                        {hotelbedsLiveBadge?.lastUpdated && (
+                          <span className="text-[11px] text-[#5C646B] hidden sm:inline">
+                            • Atualizado às {hotelbedsLiveBadge.lastUpdated}
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={() => fetchLiveHotelbedsHotels("RIO")}
                     disabled={isHotelbedsLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-[#FAF7F2] transition cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-[#FAF7F2] transition cursor-pointer shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isHotelbedsLoading ? "animate-spin text-[#B8863B]" : "text-[#9A6D28]"}`} />
-                    <span>{isHotelbedsLoading ? "Atualizando..." : "Atualizar Tarifas"}</span>
+                    <span>{isHotelbedsLoading ? "Buscando..." : "Atualizar Tarifas"}</span>
                   </button>
                 </div>
               </div>
@@ -1977,25 +1999,77 @@ export default function HospedeClubApp() {
                   </div>
                 </div>
 
-                {filteredHotels.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
-                    <p className="text-[#182026] font-medium text-sm">
-                      Nenhuma propriedade encontrada para &ldquo;{searchQuery}&rdquo;.
-                    </p>
-                    <p className="text-xs text-[#5C646B]">
-                      Tente pesquisar por &ldquo;Rio de Janeiro&rdquo;, &ldquo;Copacabana&rdquo;, &ldquo;São Conrado&rdquo;, &ldquo;Gramado&rdquo; ou &ldquo;Maceió&rdquo;.
-                    </p>
-                    <button
-                      onClick={() => {
-                        setSearchQuery("Rio de Janeiro");
-                        setHeroSearchText("Rio de Janeiro");
-                        handleOpenDestination("rio-de-janeiro");
-                      }}
-                      className="mt-2 px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium cursor-pointer shadow-xs hover:bg-[#9A6D28] transition"
-                    >
-                      Ver Hotéis no Rio de Janeiro
-                    </button>
+                {/* BANNER DE CARREGAMENTO AO VIVO NA HOME */}
+                {isHotelbedsLoading && (
+                  <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF7F2] via-white to-[#FAF7F2] border border-[#B8863B]/40 shadow-sm animate-pulse flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-full bg-[#B8863B]/10 flex items-center justify-center shrink-0">
+                        <RefreshCw className="w-5 h-5 text-[#B8863B] animate-spin" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-[#182026]">
+                            Buscando todos os hotéis da região em tempo real...
+                          </h4>
+                          <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Pesquisando
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#5C646B] mt-0.5">
+                          Consultando tarifas oficiais de membro, quartos disponíveis e fotos em alta definição.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="hidden md:flex items-center gap-2 text-xs text-[#9A6D28] font-medium shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-[#B8863B] animate-ping" />
+                      <span>Atualizando catálogo</span>
+                    </div>
                   </div>
+                )}
+
+                {filteredHotels.length === 0 ? (
+                  isHotelbedsLoading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {[1, 2, 3].map((s) => (
+                        <div
+                          key={`home-skel-${s}`}
+                          className="rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm animate-pulse flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="h-52 bg-gradient-to-r from-[#EAE3D5] via-[#F5EFE6] to-[#EAE3D5]" />
+                            <div className="p-4 space-y-2.5">
+                              <div className="h-3 w-24 bg-[#EAE3D5] rounded-full" />
+                              <div className="h-5 w-3/4 bg-[#EAE3D5] rounded-md" />
+                              <div className="h-3 w-1/2 bg-[#EAE3D5] rounded-full" />
+                            </div>
+                          </div>
+                          <div className="p-4 pt-0 border-t border-[#F0EAE0] mt-3 space-y-2">
+                            <div className="h-6 w-28 bg-[#EAE3D5] rounded-md" />
+                            <div className="h-9 w-full bg-[#EAE3D5] rounded-xl" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
+                      <p className="text-[#182026] font-medium text-sm">
+                        Nenhuma propriedade encontrada para &ldquo;{searchQuery}&rdquo;.
+                      </p>
+                      <p className="text-xs text-[#5C646B]">
+                        Tente pesquisar por &ldquo;Rio de Janeiro&rdquo;, &ldquo;Copacabana&rdquo;, &ldquo;São Conrado&rdquo;, &ldquo;Gramado&rdquo; ou &ldquo;Maceió&rdquo;.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSearchQuery("Rio de Janeiro");
+                          setHeroSearchText("Rio de Janeiro");
+                          handleOpenDestination("rio-de-janeiro");
+                        }}
+                        className="mt-2 px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium cursor-pointer shadow-xs hover:bg-[#9A6D28] transition"
+                      >
+                        Ver Hotéis no Rio de Janeiro
+                      </button>
+                    </div>
+                  )
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredHotels.map((hotel) => {
@@ -2252,11 +2326,13 @@ export default function HospedeClubApp() {
             {/* STATUS BAR DE DISPONIBILIDADE CONFIRMADA (WHITE-LABEL) */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-3.5 rounded-2xl bg-white border border-[#E5DEC9] shadow-2xs">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                <span className="text-xs font-semibold text-[#0F5257]">
-                  Tarifas Exclusivas Hóspede Club ({destinationHotels.length} opções com disponibilidade confirmada)
+                <span className={`w-2.5 h-2.5 rounded-full ${isHotelbedsLoading ? "bg-[#B8863B] animate-ping" : "bg-emerald-500 animate-pulse"} shrink-0`} />
+                <span className={`text-xs font-semibold ${isHotelbedsLoading ? "text-[#9A6D28]" : "text-[#0F5257]"}`}>
+                  {isHotelbedsLoading
+                    ? `Buscando e sincronizando todas as propriedades em ${activeDestinationCity.name}...`
+                    : `Tarifas Exclusivas Hóspede Club (${destinationHotels.length} opções com disponibilidade confirmada)`}
                 </span>
-                {hotelbedsLiveBadge?.lastUpdated && (
+                {hotelbedsLiveBadge?.lastUpdated && !isHotelbedsLoading && (
                   <span className="text-[11px] text-[#5C646B] hidden sm:inline">
                     • Atualizado às {hotelbedsLiveBadge.lastUpdated}
                   </span>
@@ -2267,11 +2343,13 @@ export default function HospedeClubApp() {
                 onClick={() =>
                   fetchLiveHotelbedsHotels(
                     activeDestinationCity.hotelbedsDestinationCode || "RIO",
-                    activeDestinationCity.id
+                    activeDestinationCity.id,
+                    checkInDate,
+                    checkOutDate
                   )
                 }
                 disabled={isHotelbedsLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-[#FAF7F2] text-xs text-[#182026] hover:bg-white transition cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-[#FAF7F2] text-xs text-[#182026] hover:bg-white transition cursor-pointer shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
@@ -2279,10 +2357,63 @@ export default function HospedeClubApp() {
                   }`}
                 />
                 <span>
-                  {isHotelbedsLoading ? "Atualizando tarifas..." : "Atualizar Tarifas"}
+                  {isHotelbedsLoading ? "Buscando..." : "Atualizar Tarifas"}
                 </span>
               </button>
             </div>
+
+            {/* BANNER DE CARREGAMENTO AO VIVO NO DESTINO */}
+            {isHotelbedsLoading && (
+              <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF7F2] via-white to-[#FAF7F2] border border-[#B8863B]/40 shadow-sm animate-pulse flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-full bg-[#B8863B]/10 flex items-center justify-center shrink-0">
+                    <RefreshCw className="w-5 h-5 text-[#B8863B] animate-spin" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold text-[#182026]">
+                        Buscando todos os hotéis da região em tempo real...
+                      </h4>
+                      <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        Sincronizando
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#5C646B] mt-0.5">
+                      Verificando tarifas de membro com até 28% OFF, disponibilidade oficial de quartos e fotos do CDN GIATA.
+                    </p>
+                  </div>
+                </div>
+                <div className="hidden md:flex items-center gap-2 text-xs text-[#9A6D28] font-medium shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-[#B8863B] animate-ping" />
+                  <span>Carregando hotéis</span>
+                </div>
+              </div>
+            )}
+
+            {/* SKELETON CARDS SE AINDA NÃO HOUVER HOTÉIS CARREGADOS */}
+            {isHotelbedsLoading && destinationHotels.length === 0 && (
+              <div className="space-y-5 sm:space-y-6">
+                {[1, 2, 3].map((s) => (
+                  <div
+                    key={`dest-skel-${s}`}
+                    className="rounded-2xl bg-white border border-[#E5DEC9] overflow-hidden shadow-sm grid grid-cols-1 lg:grid-cols-12 animate-pulse"
+                  >
+                    <div className="lg:col-span-4 min-h-[220px] bg-gradient-to-r from-[#EAE3D5] via-[#F5EFE6] to-[#EAE3D5]" />
+                    <div className="lg:col-span-5 p-5 space-y-3">
+                      <div className="h-3 w-28 bg-[#EAE3D5] rounded-full" />
+                      <div className="h-6 w-3/4 bg-[#EAE3D5] rounded-lg" />
+                      <div className="h-3 w-1/2 bg-[#EAE3D5] rounded-full" />
+                      <div className="h-16 bg-[#FAF7F2] rounded-xl border border-[#EAE3D5]" />
+                    </div>
+                    <div className="lg:col-span-3 p-5 bg-[#FAF7F2] border-t lg:border-t-0 lg:border-l border-[#EAE3D5] flex flex-col justify-between space-y-3">
+                      <div className="h-4 w-24 bg-[#EAE3D5] rounded-full" />
+                      <div className="h-8 w-32 bg-[#EAE3D5] rounded-lg" />
+                      <div className="h-10 w-full bg-[#EAE3D5] rounded-xl" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="space-y-5 sm:space-y-6">
               {destinationHotels.map((hotel) => {
