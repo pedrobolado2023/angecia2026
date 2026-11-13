@@ -232,6 +232,10 @@ export function CustomerAuthModal({
         return;
       }
 
+      if (data.customer) {
+        onAuthSuccess(data.customer);
+      }
+
       setVerificationTarget(email);
       setPreviewDevCode(data.previewCode || null);
       setSelfNumberNotice(Boolean(data.selfNumberError));

@@ -7,7 +7,7 @@
  */
 
 import { Pool } from "pg";
-import type { CustomerCRMRecord } from "./customerStore";
+import { CustomerCRMRecord, hashPassword } from "./customerStore";
 
 let pool: Pool | null = null;
 let tablesInitialized = false;
@@ -97,6 +97,7 @@ export async function ensurePostgresTables(): Promise<boolean> {
       verified BOOLEAN DEFAULT FALSE,
       membership_status VARCHAR(50) DEFAULT 'TRIAL_ACTIVE',
       trial_expires_at TIMESTAMPTZ,
+      password_hash VARCHAR(255),
       marketing_opt_in BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       last_active_at TIMESTAMPTZ DEFAULT NOW()
@@ -114,6 +115,26 @@ export async function ensurePostgresTables(): Promise<boolean> {
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS membership_status VARCHAR(50) DEFAULT 'TRIAL_ACTIVE';
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+
+    -- Garante que o administrador / membro Pedro Henrique Bonfim exista no PostgreSQL
+    INSERT INTO customers (
+      member_code, first_name, last_name, full_name, email,
+      country, cpf, whatsapp,
+      cep, street, number, neighborhood, city, state,
+      verification_code, verified, membership_status, trial_expires_at,
+      password_hash, marketing_opt_in, last_active_at
+    ) VALUES (
+      'MEM-359468', 'Pedro', 'Henrique Bonfim', 'Pedro Henrique Bonfim', 'pedrohenriquebonfim156@gmail.com',
+      'Brasil', '12345678900', '5562993473656',
+      '74000-000', 'Avenida Central', '100', 'Setor Bueno', 'Goiânia', 'GO',
+      '359468', TRUE, 'TRIAL_ACTIVE', NOW() + INTERVAL '7 days',
+      '11af28d43e170f80280ab3c087dbeddd88a17a94518735d97d26113a7f3d6397', TRUE, NOW()
+    ) ON CONFLICT (email) DO UPDATE SET
+      password_hash = EXCLUDED.password_hash,
+      verified = TRUE,
+      membership_status = 'TRIAL_ACTIVE',
+      last_active_at = NOW();
 
     CREATE TABLE IF NOT EXISTS bookings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -220,19 +241,21 @@ export async function saveCustomerToPostgres(
         state: "",
       };
 
+      const pwdHash = customer.passwordHash || null;
+
       const upsertSql = `
         INSERT INTO customers (
           member_code, first_name, last_name, full_name, email,
           country, cpf, whatsapp,
           cep, street, number, complement, neighborhood, city, state,
           verification_code, verified, membership_status, trial_expires_at,
-          marketing_opt_in, last_active_at
+          marketing_opt_in, password_hash, last_active_at
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8,
           $9, $10, $11, $12, $13, $14, $15,
           $16, $17, $18, $19,
-          $20, NOW()
+          $20, $21, NOW()
         )
         ON CONFLICT (email) DO UPDATE SET
           full_name = EXCLUDED.full_name,
@@ -251,6 +274,7 @@ export async function saveCustomerToPostgres(
           verified = EXCLUDED.verified,
           membership_status = EXCLUDED.membership_status,
           trial_expires_at = COALESCE(EXCLUDED.trial_expires_at, customers.trial_expires_at),
+          password_hash = COALESCE(EXCLUDED.password_hash, customers.password_hash),
           last_active_at = NOW();
       `;
 
@@ -275,6 +299,7 @@ export async function saveCustomerToPostgres(
         memStatus,
         trialExp,
         customer.marketingOptIn ?? true,
+        pwdHash,
       ]);
 
       console.log(`[PostgreSQL CRM] Cliente '${cleanEmail}' persistido com sucesso no banco!`);
@@ -323,6 +348,139 @@ export async function markCustomerVerifiedInPostgres(
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, error: msg };
   }
+}
+
+/**
+ * Converte um registro do banco de dados PostgreSQL para a interface CustomerCRMRecord
+ */
+export function mapPostgresRowToCustomer(row: any): CustomerCRMRecord {
+  const trialExpiresAt = row.trial_expires_at
+    ? new Date(row.trial_expires_at).toISOString()
+    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const now = Date.now();
+  const trialExpiresTime = new Date(trialExpiresAt).getTime();
+  const diffMs = trialExpiresTime - now;
+  const daysRemaining = diffMs > 0 ? Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24))) : 0;
+  const status: "TRIAL_ACTIVE" | "EXPIRED" =
+    diffMs > 0 ? ((row.membership_status as "TRIAL_ACTIVE" | "EXPIRED") || "TRIAL_ACTIVE") : "EXPIRED";
+
+  return {
+    id: row.member_code || String(row.id),
+    fullName: row.full_name || `${row.first_name || ""} ${row.last_name || ""}`.trim() || "Membro Hóspede Club",
+    email: (row.email || "").toLowerCase().trim(),
+    whatsapp: row.whatsapp || "",
+    cpf: row.cpf || undefined,
+    address: {
+      cep: row.cep || "",
+      street: row.street || "",
+      number: row.number || "",
+      complement: row.complement || undefined,
+      neighborhood: row.neighborhood || "",
+      city: row.city || "",
+      state: row.state || "",
+    },
+    passwordHash: row.password_hash || undefined,
+    verification: {
+      code: row.verification_code || "123456",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      verified: Boolean(row.verified),
+      attempts: 0,
+    },
+    membership: {
+      status,
+      trialStartedAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      trialExpiresAt,
+      daysRemaining,
+    },
+    cityOrigin: row.city ? `${row.city} (${row.state || "BR"})` : "Brasil",
+    preferredDestinations: ["Rio de Janeiro, Búzios & Angra", "Maceió & Maragogi"],
+    travelProfile: "Casal",
+    authMethod: "Cadastro Clube",
+    marketingOptIn: Boolean(row.marketing_opt_in ?? true),
+    lgpdConsentTimestamp: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : new Date().toISOString(),
+    favoriteHotelIds: [],
+    favoriteHotelNames: [],
+    searchHistory: [],
+    viewedHotels: [],
+    checkoutIntents: [],
+    bookings: [],
+    campaignTags: ["Membro Private Ativo", "PostgreSQL Oficial"],
+  };
+}
+
+/**
+ * Busca um cliente no PostgreSQL por E-mail, CPF, WhatsApp, member_code ou ID
+ */
+export async function findCustomerInPostgres(
+  identifier: string
+): Promise<CustomerCRMRecord | null> {
+  const db = getPostgresPool();
+  if (!db) return null;
+
+  try {
+    await ensurePostgresTables();
+    const client = await db.connect();
+    try {
+      const clean = (identifier || "").trim().toLowerCase();
+      const digits = (identifier || "").replace(/\D/g, "");
+
+      const query = `
+        SELECT * FROM customers
+        WHERE LOWER(email) = $1
+           OR ($2 <> '' AND (REPLACE(REPLACE(REPLACE(COALESCE(cpf, ''), '.', ''), '-', ''), ' ', '') = $2 OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp, ''), '+', ''), '(', ''), ')', ''), '-', '') = $2))
+           OR member_code = $1
+           OR id::text = $1
+        LIMIT 1;
+      `;
+      const res = await client.query(query, [clean, digits]);
+      if (res.rows.length === 0) return null;
+
+      return mapPostgresRowToCustomer(res.rows[0]);
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.warn("[PostgreSQL CRM] Erro ao buscar cliente por identificador:", err);
+    return null;
+  }
+}
+
+/**
+ * Autentica um cliente diretamente no banco PostgreSQL (por Senha ou Código)
+ */
+export async function authenticateCustomerInPostgres(
+  identifier: string,
+  secret: string,
+  mode: "password" | "code" = "password"
+): Promise<CustomerCRMRecord> {
+  const customer = await findCustomerInPostgres(identifier);
+  if (!customer) {
+    throw new Error("Nenhum cadastro encontrado com este e-mail ou CPF no banco de dados.");
+  }
+
+  if (mode === "password") {
+    const hashed = hashPassword(secret);
+    if (customer.passwordHash && customer.passwordHash !== hashed) {
+      throw new Error("Senha incorreta. Verifique os dados digitados.");
+    }
+  } else {
+    if (!customer.verification || customer.verification.code !== secret.trim()) {
+      throw new Error("Código de segurança inválido.");
+    }
+  }
+
+  // Atualiza last_active_at no PostgreSQL
+  try {
+    const db = getPostgresPool();
+    if (db) {
+      await db.query("UPDATE customers SET last_active_at = NOW() WHERE email = $1", [customer.email]);
+    }
+  } catch {}
+
+  return customer;
 }
 
 export interface SaveBookingRecordInput {

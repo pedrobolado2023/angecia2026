@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resendCustomerWhatsAppCode } from "@/lib/customerStore";
 import { sendWhatsAppVerificationCode } from "@/lib/wacliService";
+import { getPostgresPool } from "@/lib/postgres";
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +16,18 @@ export async function POST(request: NextRequest) {
     }
 
     const { customer, newCode } = resendCustomerWhatsAppCode(identifier);
+
+    // Atualiza o novo código no PostgreSQL
+    try {
+      const db = getPostgresPool();
+      if (db) {
+        await db.query("UPDATE customers SET verification_code = $1 WHERE email = $2 OR whatsapp = $3", [
+          newCode,
+          customer.email.toLowerCase(),
+          customer.whatsapp.replace(/\D/g, ""),
+        ]);
+      }
+    } catch {}
 
     const wacliResult = await sendWhatsAppVerificationCode({
       phone: customer.whatsapp,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateCustomerCredentials } from "@/lib/customerStore";
+import { authenticateCustomerCredentials, syncCustomerToLocalStore, CustomerCRMRecord } from "@/lib/customerStore";
+import { authenticateCustomerInPostgres } from "@/lib/postgres";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,11 +21,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const customer = authenticateCustomerCredentials(
-      identifier,
-      secret,
-      mode === "code" ? "code" : "password"
-    );
+    let customer: CustomerCRMRecord | null = null;
+    let authError: string | null = null;
+
+    // 1. Tenta autenticar diretamente no PostgreSQL (banco de dados oficial)
+    try {
+      customer = await authenticateCustomerInPostgres(
+        identifier,
+        secret,
+        mode === "code" ? "code" : "password"
+      );
+    } catch (pgErr) {
+      authError = pgErr instanceof Error ? pgErr.message : "Erro na autenticação PostgreSQL";
+    }
+
+    // 2. Se não encontrou no PostgreSQL, tenta autenticar no store local (contingência)
+    if (!customer) {
+      try {
+        customer = authenticateCustomerCredentials(
+          identifier,
+          secret,
+          mode === "code" ? "code" : "password"
+        );
+        authError = null;
+      } catch (jsonErr) {
+        if (!authError) {
+          authError = jsonErr instanceof Error ? jsonErr.message : "Falha na autenticação.";
+        }
+      }
+    }
+
+    if (!customer) {
+      return NextResponse.json({ ok: false, error: authError || "Credenciais inválidas." }, { status: 400 });
+    }
+
+    // Sincroniza bidirecionalmente no cache local
+    try {
+      syncCustomerToLocalStore(customer);
+    } catch {}
 
     // Cria token seguro de sessão do cliente
     const sessionPayload = {

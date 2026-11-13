@@ -420,14 +420,44 @@ export default function HospedeClubApp() {
     }
   };
 
-  // Carrega sessão do cliente via /api/auth/me
+  // Carrega imediatamente sessão em cache local e valida com o PostgreSQL via /api/auth/me
   useEffect(() => {
+    // 1. Restaura instantaneamente do localStorage se o navegador foi reiniciado
+    try {
+      const cached = localStorage.getItem("hospede_customer_profile");
+      if (cached) {
+        const customer = JSON.parse(cached);
+        if (customer && customer.id && customer.email) {
+          setLoggedCustomer(customer);
+          setIsClubMember(customer.membership?.status !== "EXPIRED");
+          setMemberName(customer.fullName);
+          setMemberId(customer.id);
+          if (customer.address?.city) {
+            setMemberCityOrigin(`${customer.address.city} (${customer.address.state})`);
+          }
+          const nameParts = (customer.fullName || "").trim().split(" ");
+          setPrimaryFirstName(nameParts[0] || "");
+          setPrimaryLastName(nameParts.slice(1).join(" ") || "");
+          setPrimaryEmail(customer.email);
+          setPrimaryEmailConfirm(customer.email);
+          setPrimaryWhatsapp(customer.whatsapp);
+          if (customer.cpf) setPrimaryCpf(customer.cpf);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Valida com o PostgreSQL no servidor
     async function checkCustomerSession() {
       try {
         const res = await fetch("/api/auth/me");
         const data = await res.json();
         if (data.authenticated && data.customer) {
           setLoggedCustomer(data.customer);
+          try {
+            localStorage.setItem("hospede_customer_profile", JSON.stringify(data.customer));
+          } catch {}
           setIsClubMember(data.customer.membership?.status !== "EXPIRED");
           setMemberName(data.customer.fullName);
           setMemberId(data.customer.id);
@@ -442,10 +472,13 @@ export default function HospedeClubApp() {
           setPrimaryWhatsapp(data.customer.whatsapp);
           if (data.customer.cpf) setPrimaryCpf(data.customer.cpf);
         } else {
-          setIsClubMember(false);
+          // Se não houver sessão ativa no servidor e nenhum cache válido, remove
+          if (!localStorage.getItem("hospede_customer_profile")) {
+            setIsClubMember(false);
+          }
         }
       } catch {
-        setIsClubMember(false);
+        // Em caso de falha de rede temporária, preserva o estado ativo do cache
       }
     }
     checkCustomerSession();
@@ -453,6 +486,9 @@ export default function HospedeClubApp() {
 
   const handleAuthSuccess = (customer: LoggedCustomer) => {
     setLoggedCustomer(customer);
+    try {
+      localStorage.setItem("hospede_customer_profile", JSON.stringify(customer));
+    } catch {}
     setIsClubMember(customer.membership?.status !== "EXPIRED");
     setMemberName(customer.fullName);
     setMemberId(customer.id);
@@ -477,6 +513,9 @@ export default function HospedeClubApp() {
   };
 
   const handleCustomerLogout = async () => {
+    try {
+      localStorage.removeItem("hospede_customer_profile");
+    } catch {}
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {

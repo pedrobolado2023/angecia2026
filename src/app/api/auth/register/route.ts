@@ -91,7 +91,21 @@ export async function POST(request: NextRequest) {
 
     const isSelf = Boolean(wacliResult.selfNumberError);
 
-    return NextResponse.json({
+    // Cria token seguro de sessão do cliente (já liberado com 7 dias de Degustação VIP)
+    const sessionPayload = {
+      customerId: customer.id,
+      fullName: customer.fullName,
+      email: customer.email,
+      whatsapp: customer.whatsapp,
+      cpf: customer.cpf,
+      membershipStatus: customer.membership?.status || "TRIAL_ACTIVE",
+      trialExpiresAt: customer.membership?.trialExpiresAt,
+      issuedAt: new Date().toISOString(),
+    };
+
+    const sessionCookieValue = Buffer.from(JSON.stringify(sessionPayload)).toString("base64");
+
+    const response = NextResponse.json({
       ok: true,
       message: isSelf
         ? `Atenção: O número informado (${customer.whatsapp}) é o próprio número de envio do WhatsApp da agência (+55 62 99347-3656). O WhatsApp não permite o envio para o próprio número. Use o código exibido abaixo para validar seu acesso de teste.`
@@ -101,8 +115,27 @@ export async function POST(request: NextRequest) {
       whatsapp: customer.whatsapp,
       selfNumberError: isSelf,
       // Se for o próprio número ou mock, exibe o código para não travar o teste do administrador
-      previewCode: wacliResult.mockMode ? verificationCode : undefined,
+      previewCode: (isSelf || wacliResult.mockMode || !wacliResult.success) ? verificationCode : undefined,
+      customer: {
+        id: customer.id,
+        fullName: customer.fullName,
+        email: customer.email,
+        whatsapp: customer.whatsapp,
+        cpf: customer.cpf,
+        address: customer.address,
+        membership: customer.membership,
+      },
     });
+
+    response.cookies.set("hospede_customer_session", sessionCookieValue, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30, // 30 dias
+    });
+
+    return response;
   } catch (err: unknown) {
     const errorMsg =
       err instanceof Error ? err.message : "Erro interno ao processar cadastro.";

@@ -217,6 +217,50 @@ export function computeMembershipStatus(customer: CustomerCRMRecord): CustomerMe
 
 const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
   {
+    id: "MEM-359468",
+    fullName: "Pedro Henrique Bonfim",
+    email: "pedrohenriquebonfim156@gmail.com",
+    whatsapp: "+55 (62) 99347-3656",
+    cpf: "123.456.789-00",
+    address: {
+      cep: "74000-000",
+      street: "Avenida Central",
+      number: "100",
+      complement: "Sala VIP",
+      neighborhood: "Setor Bueno",
+      city: "Goiânia",
+      state: "GO",
+    },
+    passwordHash: hashPassword("35946800Pedro@"),
+    verification: {
+      code: "359468",
+      expiresAt: "2027-01-01T00:00:00.000Z",
+      verified: true,
+      attempts: 0,
+    },
+    membership: {
+      status: "TRIAL_ACTIVE",
+      trialStartedAt: new Date().toISOString(),
+      trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      daysRemaining: 7,
+    },
+    cityOrigin: "Goiânia (GO)",
+    preferredDestinations: ["Rio de Janeiro, Búzios & Angra", "Maceió & Maragogi", "Gramado & Vale dos Vinhedos"],
+    travelProfile: "Casal",
+    authMethod: "Cadastro Clube",
+    marketingOptIn: true,
+    lgpdConsentTimestamp: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    favoriteHotelIds: [],
+    favoriteHotelNames: [],
+    searchHistory: [],
+    viewedHotels: [],
+    checkoutIntents: [],
+    bookings: [],
+    campaignTags: ["Membro Private Ativo", "Administrador VIP", "PostgreSQL Conectado"],
+  },
+  {
     id: "MEM-8492",
     fullName: "Pedro Pereira",
     email: "membro@hospedeclub.com.br",
@@ -342,6 +386,25 @@ export function writeCRMDatabase(db: CRMDatabaseSchema): void {
     fs.writeFileSync(DB_FILE_PATH, JSON.stringify(db, null, 2), "utf-8");
   } catch {
     // fallback silencioso
+  }
+}
+
+/**
+ * Sincroniza um cliente recuperado do PostgreSQL no cache local JSON
+ */
+export function syncCustomerToLocalStore(customer: CustomerCRMRecord): void {
+  try {
+    const db = readCRMDatabase();
+    const cleanEmail = customer.email.toLowerCase().trim();
+    const idx = db.customers.findIndex((c) => c.email.toLowerCase().trim() === cleanEmail);
+    if (idx >= 0) {
+      db.customers[idx] = { ...db.customers[idx], ...customer };
+    } else {
+      db.customers.unshift(customer);
+    }
+    writeCRMDatabase(db);
+  } catch {
+    // ignore
   }
 }
 
