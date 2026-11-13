@@ -99,6 +99,45 @@ const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
   "goiania": "GYN",
 };
 
+const DESTINATION_ALIASES: Record<string, { cityId: string; hbCode: string }> = {
+  brasilia: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  "distrito federal": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  df: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  taguatinga: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  "sao paulo": { cityId: "campos-monte-verde", hbCode: "SAO" },
+  sp: { cityId: "campos-monte-verde", hbCode: "SAO" },
+  salvador: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
+  bahia: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
+  curitiba: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
+  parana: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
+  florianopolis: { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
+  "porto alegre": { cityId: "gramado-canela", hbCode: "POA" },
+  "rio de janeiro": { cityId: "rio-de-janeiro", hbCode: "RIO" },
+  rio: { cityId: "rio-de-janeiro", hbCode: "RIO" },
+  maceio: { cityId: "maceio-maragogi", hbCode: "MCZ" },
+  recife: { cityId: "porto-de-galinhas", hbCode: "REC" },
+  fortaleza: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "FOR" },
+  natal: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "NAT" },
+  goiania: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "GYN" },
+  "belo horizonte": { cityId: "campos-monte-verde", hbCode: "BHZ" },
+  buzios: { cityId: "rio-de-janeiro", hbCode: "RIO" },
+  angra: { cityId: "rio-de-janeiro", hbCode: "RIO" },
+  maragogi: { cityId: "maceio-maragogi", hbCode: "MCZ" },
+  canela: { cityId: "gramado-canela", hbCode: "POA" },
+  "monte verde": { cityId: "campos-monte-verde", hbCode: "SAO" },
+  "campos do jordao": { cityId: "campos-monte-verde", hbCode: "SAO" },
+  olimpia: { cityId: "olimpia-litoral-sp", hbCode: "SAO" },
+  "caldas novas": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  "rio quente": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  pirenopolis: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
+  "balneario camboriu": { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
+  penha: { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
+  jericoacoara: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "FOR" },
+  pipa: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "NAT" },
+  trancoso: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
+  "praia do forte": { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
+};
+
 export default function HospedeClubApp() {
   const [hotelsCatalog, setHotelsCatalog] = useState<CuratedHotel[]>(CURATED_HOTELS);
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("home");
@@ -870,6 +909,7 @@ export default function HospedeClubApp() {
   // =========================================================================
   const heroSearchInputRef = useRef<HTMLInputElement | null>(null);
   const [heroSearchText, setHeroSearchText] = useState<string>("");
+  const [hotelBarSearchText, setHotelBarSearchText] = useState<string>("");
 
   const handleExecuteHeroSearch = () => {
     const rawQuery = heroSearchText.trim();
@@ -900,30 +940,7 @@ export default function HospedeClubApp() {
     }
 
     // 1.1 Mapeamento inteligente para capitais e polos turísticos nacionais
-    const destinationAliases: Record<string, { cityId: string; hbCode: string }> = {
-      brasilia: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-      "distrito federal": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-      df: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-      taguatinga: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-      "sao paulo": { cityId: "campos-monte-verde", hbCode: "SAO" },
-      sp: { cityId: "campos-monte-verde", hbCode: "SAO" },
-      salvador: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
-      bahia: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
-      curitiba: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
-      parana: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
-      florianopolis: { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
-      "porto alegre": { cityId: "gramado-canela", hbCode: "POA" },
-      "rio de janeiro": { cityId: "rio-de-janeiro", hbCode: "RIO" },
-      rio: { cityId: "rio-de-janeiro", hbCode: "RIO" },
-      maceio: { cityId: "maceio-maragogi", hbCode: "MCZ" },
-      recife: { cityId: "porto-de-galinhas", hbCode: "REC" },
-      fortaleza: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "FOR" },
-      natal: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "NAT" },
-      goiania: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "GYN" },
-      "belo horizonte": { cityId: "campos-monte-verde", hbCode: "BHZ" },
-    };
-
-    for (const [key, mapping] of Object.entries(destinationAliases)) {
+    for (const [key, mapping] of Object.entries(DESTINATION_ALIASES)) {
       if (q.includes(key) || (cleanQ !== "" && cleanQ.includes(key))) {
         setSelectedCityId(mapping.cityId);
         setActiveScreen("destination");
@@ -953,6 +970,77 @@ export default function HospedeClubApp() {
 
     // 4. Fallback: abre o destino selecionado atualmente
     handleOpenDestination(selectedCityId);
+  };
+
+  // BUSCA LIVRE & PESQUISA DE TARIFAS NA TELA DO HOTEL
+  const handleExecuteHotelBarSearch = (overrideQuery?: string) => {
+    const rawQuery = (overrideQuery !== undefined ? overrideQuery : hotelBarSearchText).trim();
+
+    // Se o campo estiver em branco, apenas recalcula as tarifas do hotel e destino atual com as datas/hóspedes selecionados
+    if (!rawQuery) {
+      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+      fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+      return;
+    }
+
+    const q = normalizeForSearch(rawQuery);
+    const cleanQ = cleanSearchQuery(rawQuery);
+
+    // 1. PRIMEIRO: Verifica se corresponde a um destino ou cidade cadastrada
+    const matchedCity = DESTINATION_CITIES.find((city) => {
+      const stateExpanded = STATE_FULL_NAMES[city.stateCode] || "";
+      const haystack = normalizeForSearch(
+        `${city.name} ${city.shortName} ${city.stateCode} ${city.stateName} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded} estado de ${city.stateName} estado do ${city.stateName}`
+      );
+      return (
+        haystack.includes(q) ||
+        (cleanQ !== "" && haystack.includes(cleanQ)) ||
+        (cleanQ !== "" && cleanQ.split(" ").filter((w) => w.length >= 2).every((w) => haystack.includes(w)))
+      );
+    });
+
+    if (matchedCity) {
+      setSelectedCityId(matchedCity.id);
+      setHeroSearchText(rawQuery);
+      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[matchedCity.id] || "RIO";
+      fetchLiveHotelbedsHotels(hbDest, matchedCity.id, checkInDate, checkOutDate, adultsCount, childrenCount);
+      setActiveScreen("destination");
+      window.scrollTo({ top: 300, behavior: "smooth" });
+      return;
+    }
+
+    // 1.1 Mapeamento inteligente para capitais e polos turísticos nacionais
+    for (const [key, mapping] of Object.entries(DESTINATION_ALIASES)) {
+      if (q.includes(key) || (cleanQ !== "" && cleanQ.includes(key))) {
+        setSelectedCityId(mapping.cityId);
+        setHeroSearchText(rawQuery);
+        setActiveScreen("destination");
+        fetchLiveHotelbedsHotels(mapping.hbCode, mapping.cityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+        window.scrollTo({ top: 300, behavior: "smooth" });
+        return;
+      }
+    }
+
+    // 2. SEGUNDO: Verifica se corresponde a um hotel específico do catálogo pelo nome
+    const matchedHotel = hotelsCatalog.find((hotel) => {
+      const hotelNameNorm = normalizeForSearch(hotel.name);
+      return hotelNameNorm.includes(q) || (cleanQ !== "" && hotelNameNorm.includes(cleanQ));
+    });
+
+    if (matchedHotel) {
+      if (matchedHotel.id === selectedHotel.id) {
+        // Se for o mesmo hotel, recalcula suas tarifas com as novas datas/hóspedes
+        const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+        fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+      } else {
+        handleOpenHotelDetail(matchedHotel);
+      }
+      return;
+    }
+
+    // 3. Fallback: Se não encontrou destino específico, consulta na Hotelbeds para a cidade ativa
+    const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+    fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
   };
 
   const destinationHotels = useMemo(() => {
@@ -1045,6 +1133,7 @@ export default function HospedeClubApp() {
     setSelectedRoomId(hotel.rooms[0].id);
     setActivePhotoIndex(0);
     setBookingConfirmedVoucher(null);
+    setHotelBarSearchText("");
     setActiveScreen("hotel");
     setMobileMenuOpen(false);
     syncCustomerActivityToBackend("VIEW_HOTEL", {
@@ -2630,30 +2719,48 @@ export default function HospedeClubApp() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
-              {/* 1. SELETOR DE DESTINO / CIDADE */}
+              {/* 1. CAMPO DE BUSCA LIVRE DE DESTINO OU HOTEL */}
               <div className="sm:col-span-1 lg:col-span-4 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-2 sm:pb-0 lg:pr-3">
                 <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium mb-1 flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-[#B8863B]" />
-                  <span>Destino</span>
+                  <span>Destino ou Hotel</span>
                 </label>
-                <select
-                  value={selectedCityId}
-                  onChange={(e) => {
-                    const newCityId = e.target.value;
-                    setSelectedCityId(newCityId);
-                    const hbDest = CITY_TO_HOTELBEDS_DESTINATION[newCityId] || "RIO";
-                    fetchLiveHotelbedsHotels(hbDest, newCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
-                    setActiveScreen("destination");
-                    window.scrollTo({ top: 300, behavior: "smooth" });
-                  }}
-                  className="w-full bg-[#FAF7F2] text-[#182026] text-xs font-medium px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] cursor-pointer"
-                >
-                  {DESTINATION_CITIES.map((city) => (
-                    <option key={city.id} value={city.id}>
-                      {city.name} ({city.stateCode})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2 bg-[#FAF7F2] px-3 py-1.5 rounded-xl border border-[#E2D9C8] focus-within:border-[#B8863B] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#B8863B]/15 transition h-[38px]">
+                  <Search className="w-3.5 h-3.5 text-[#B8863B] shrink-0" />
+                  <input
+                    type="text"
+                    value={hotelBarSearchText}
+                    onChange={(e) => {
+                      setHotelBarSearchText(e.target.value);
+                      setHeroSearchText(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleExecuteHotelBarSearch();
+                      }
+                    }}
+                    placeholder={
+                      selectedHotel
+                        ? `${selectedHotel.cityName} (${selectedHotel.stateCode}) — alterar destino ou hotel`
+                        : "Destino ou hotel (Ex: Rio, Gramado...)"
+                    }
+                    className="w-full bg-transparent text-[#182026] text-xs font-medium placeholder:text-[#5C646B]/60 placeholder:font-normal focus:outline-none"
+                  />
+                  {hotelBarSearchText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHotelBarSearchText("");
+                        setHeroSearchText("");
+                      }}
+                      className="p-0.5 rounded-full text-[#5C646B] hover:text-[#182026] hover:bg-[#EAE3D5] transition cursor-pointer shrink-0"
+                      title="Limpar busca"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* 2. DATAS DE CHECK-IN E CHECK-OUT */}
@@ -2697,7 +2804,7 @@ export default function HospedeClubApp() {
                 </div>
               </div>
 
-              {/* 3. SELETOR DE HÓSPEDES & BOTÃO RECALCULAR */}
+              {/* 3. SELETOR DE HÓSPEDES & BOTÃO PESQUISAR */}
               <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2">
                 <div ref={hotelGuestsContainerRef} className="relative flex-1">
                   <label className="block text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium mb-1">
@@ -2824,16 +2931,17 @@ export default function HospedeClubApp() {
                 <div className="pt-4 sm:pt-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-                      fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
-                    }}
+                    onClick={() => handleExecuteHotelBarSearch()}
                     disabled={isHotelbedsLoading}
-                    className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs transition cursor-pointer flex items-center justify-center gap-1 shadow-xs disabled:opacity-60"
-                    title="Recalcular Tarifas"
+                    className="h-[38px] px-3.5 sm:px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-60 whitespace-nowrap"
+                    title="Pesquisar Tarifas e Hotéis"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isHotelbedsLoading ? "animate-spin" : ""}`} />
-                    <span className="hidden sm:inline">Recalcular</span>
+                    {isHotelbedsLoading ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Search className="w-3.5 h-3.5" />
+                    )}
+                    <span>Pesquisar</span>
                   </button>
                 </div>
               </div>

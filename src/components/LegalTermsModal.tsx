@@ -210,3 +210,4 @@ export function LegalTermsModal({
     </div>
   );
 }
+
