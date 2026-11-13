@@ -1,21 +1,46 @@
 /**
  * HÓSPEDE CLUB — Conexão com Banco de Dados PostgreSQL (Easypanel / Supabase / Neon / Render)
  * Salva com segurança:
- * - Dados completos do Titular (Nome, Sobrenome, E-mail, País, CPF, WhatsApp, Data de Nascimento)
- * - Dados do Segundo Adulto (Nome, Sobrenome, CPF, Data de Nascimento)
- * - Dados da Reserva e Pagamento Mercado Pago
+ * - Cadastros completos de Membros/Clientes no CRM (Nome, CPF, WhatsApp, E-mail, Endereço, Código de Verificação)
+ * - Dados completos do Titular e Segundo Hóspede em Reservas
+ * - Dados de Pagamento do Mercado Pago e Emissão de Vouchers
  */
 
 import { Pool } from "pg";
+import type { CustomerCRMRecord } from "./customerStore";
 
 let pool: Pool | null = null;
 let tablesInitialized = false;
 
+/**
+ * Higieniza a DATABASE_URL. Se a senha contiver caracteres especiais como '@',
+ * codifica automaticamente para '%40' evitando que o parser quebre o hostname.
+ * Exemplo: postgres://postgres:142635Pe@@agentesia_postgres:5432/agentesia
+ *       -> postgres://postgres:142635Pe%40@agentesia_postgres:5432/agentesia
+ */
+export function sanitizeDatabaseUrl(url?: string): string {
+  if (!url) return "";
+  const trimmed = url.trim();
+  const pattern = /^(postgres(?:ql)?:\/\/[^:]+:)(.*)@([^@\/]+(?::\d+)?\/.*)$/;
+  const match = trimmed.match(pattern);
+  if (match) {
+    const prefix = match[1];
+    const rawPass = match[2];
+    const suffix = match[3];
+    if (rawPass.includes("@")) {
+      return `${prefix}${rawPass.replace(/@/g, "%40")}@${suffix}`;
+    }
+  }
+  return trimmed;
+}
+
 export function getPostgresPool(): Pool | null {
-  const dbUrl = process.env.DATABASE_URL?.trim();
-  if (!dbUrl) {
+  const rawDbUrl = process.env.DATABASE_URL?.trim();
+  if (!rawDbUrl) {
     return null;
   }
+
+  const dbUrl = sanitizeDatabaseUrl(rawDbUrl);
 
   if (!pool) {
     const isCloud =
@@ -53,18 +78,42 @@ export async function ensurePostgresTables(): Promise<boolean> {
     CREATE TABLE IF NOT EXISTS customers (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       member_code VARCHAR(30) UNIQUE,
-      first_name VARCHAR(100) NOT NULL,
-      last_name VARCHAR(100) NOT NULL,
+      first_name VARCHAR(100),
+      last_name VARCHAR(100),
       full_name VARCHAR(200) NOT NULL,
       email VARCHAR(180) UNIQUE NOT NULL,
       country VARCHAR(80) NOT NULL DEFAULT 'Brasil',
-      cpf VARCHAR(20) NOT NULL,
+      cpf VARCHAR(20),
       whatsapp VARCHAR(40) NOT NULL,
       birth_date DATE,
+      cep VARCHAR(20),
+      street VARCHAR(200),
+      number VARCHAR(50),
+      complement VARCHAR(100),
+      neighborhood VARCHAR(100),
+      city VARCHAR(100),
+      state VARCHAR(20),
+      verification_code VARCHAR(10),
+      verified BOOLEAN DEFAULT FALSE,
+      membership_status VARCHAR(50) DEFAULT 'TRIAL_ACTIVE',
+      trial_expires_at TIMESTAMPTZ,
       marketing_opt_in BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       last_active_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- Migração segura de colunas caso a tabela já existisse com menos campos
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cep VARCHAR(20);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS street VARCHAR(200);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS number VARCHAR(50);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS complement VARCHAR(100);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS neighborhood VARCHAR(100);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(20);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_code VARCHAR(10);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS membership_status VARCHAR(50) DEFAULT 'TRIAL_ACTIVE';
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS bookings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -108,6 +157,8 @@ export async function ensurePostgresTables(): Promise<boolean> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
+    CREATE INDEX IF NOT EXISTS idx_customers_whatsapp ON customers(whatsapp);
+    CREATE INDEX IF NOT EXISTS idx_customers_cpf ON customers(cpf);
     CREATE INDEX IF NOT EXISTS idx_bookings_voucher ON bookings(voucher_code);
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
   `;
@@ -125,6 +176,152 @@ export async function ensurePostgresTables(): Promise<boolean> {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("[PostgreSQL] Aviso ao inicializar tabelas:", msg);
     return false;
+  }
+}
+
+/**
+ * Salva ou atualiza o cadastro de um Membro no PostgreSQL do Easypanel
+ */
+export async function saveCustomerToPostgres(
+  customer: CustomerCRMRecord,
+  verificationCode?: string
+): Promise<{ success: boolean; error?: string }> {
+  const db = getPostgresPool();
+  if (!db) {
+    return { success: false, error: "DATABASE_URL não configurada no ambiente." };
+  }
+
+  try {
+    await ensurePostgresTables();
+    const client = await db.connect();
+
+    try {
+      const names = (customer.fullName || "").trim().split(" ");
+      const firstName = names[0] || "";
+      const lastName = names.slice(1).join(" ") || "";
+      const cleanEmail = customer.email.trim().toLowerCase();
+      const cleanWhatsapp = customer.whatsapp.replace(/\D/g, "");
+      const cleanCpf = (customer.cpf || "").replace(/\D/g, "");
+      const memberCode = customer.id?.startsWith("MEM-")
+        ? customer.id
+        : `MEM-${(customer.id || String(Date.now())).slice(-6).toUpperCase()}`;
+      const code = verificationCode || customer.verification?.code || null;
+      const isVerified = customer.verification?.verified || false;
+      const memStatus = customer.membership?.status || "TRIAL_ACTIVE";
+      const trialExp = customer.membership?.trialExpiresAt ? new Date(customer.membership.trialExpiresAt) : null;
+
+      const addr = customer.address || {
+        cep: "",
+        street: "",
+        number: "",
+        complement: "",
+        neighborhood: "",
+        city: "",
+        state: "",
+      };
+
+      const upsertSql = `
+        INSERT INTO customers (
+          member_code, first_name, last_name, full_name, email,
+          country, cpf, whatsapp,
+          cep, street, number, complement, neighborhood, city, state,
+          verification_code, verified, membership_status, trial_expires_at,
+          marketing_opt_in, last_active_at
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8,
+          $9, $10, $11, $12, $13, $14, $15,
+          $16, $17, $18, $19,
+          $20, NOW()
+        )
+        ON CONFLICT (email) DO UPDATE SET
+          full_name = EXCLUDED.full_name,
+          first_name = EXCLUDED.first_name,
+          last_name = EXCLUDED.last_name,
+          cpf = COALESCE(NULLIF(EXCLUDED.cpf, ''), customers.cpf),
+          whatsapp = EXCLUDED.whatsapp,
+          cep = COALESCE(NULLIF(EXCLUDED.cep, ''), customers.cep),
+          street = COALESCE(NULLIF(EXCLUDED.street, ''), customers.street),
+          number = COALESCE(NULLIF(EXCLUDED.number, ''), customers.number),
+          complement = COALESCE(EXCLUDED.complement, customers.complement),
+          neighborhood = COALESCE(NULLIF(EXCLUDED.neighborhood, ''), customers.neighborhood),
+          city = COALESCE(NULLIF(EXCLUDED.city, ''), customers.city),
+          state = COALESCE(NULLIF(EXCLUDED.state, ''), customers.state),
+          verification_code = COALESCE(EXCLUDED.verification_code, customers.verification_code),
+          verified = EXCLUDED.verified,
+          membership_status = EXCLUDED.membership_status,
+          trial_expires_at = COALESCE(EXCLUDED.trial_expires_at, customers.trial_expires_at),
+          last_active_at = NOW();
+      `;
+
+      await client.query(upsertSql, [
+        memberCode,
+        firstName,
+        lastName,
+        customer.fullName.trim(),
+        cleanEmail,
+        "Brasil",
+        cleanCpf,
+        cleanWhatsapp,
+        addr.cep || "",
+        addr.street || "",
+        addr.number || "",
+        addr.complement || null,
+        addr.neighborhood || "",
+        addr.city || "",
+        addr.state || "",
+        code,
+        isVerified,
+        memStatus,
+        trialExp,
+        customer.marketingOptIn ?? true,
+      ]);
+
+      console.log(`[PostgreSQL CRM] Cliente '${cleanEmail}' persistido com sucesso no banco!`);
+      return { success: true };
+    } finally {
+      client.release();
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[PostgreSQL CRM] Erro ao persistir cliente no banco:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Marca o cliente como verificado no PostgreSQL após informar o código correto
+ */
+export async function markCustomerVerifiedInPostgres(
+  identifier: string
+): Promise<{ success: boolean; error?: string }> {
+  const db = getPostgresPool();
+  if (!db) return { success: false, error: "DATABASE_URL ausente." };
+
+  try {
+    const client = await db.connect();
+    try {
+      const clean = identifier.trim().toLowerCase();
+      const digits = identifier.replace(/\D/g, "");
+
+      await client.query(
+        `
+        UPDATE customers
+        SET verified = TRUE,
+            membership_status = 'TRIAL_ACTIVE',
+            last_active_at = NOW()
+        WHERE email = $1 OR whatsapp = $2 OR cpf = $2;
+      `,
+        [clean, digits]
+      );
+
+      return { success: true };
+    } finally {
+      client.release();
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: msg };
   }
 }
 
@@ -282,4 +479,3 @@ export async function saveBookingToPostgres(
     return { success: false, error: msg };
   }
 }
-

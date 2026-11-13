@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchHotelbedsAvailability } from "@/lib/hotelbeds";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
+import { getSyncExchangeRateToBRL } from "@/lib/currency";
 
 function enrichHotelsWithClubPricing(hotels: any[]) {
   return hotels.map((hotel) => {
-    const netRate = Math.max(1, Number(hotel.minRate || 100));
+    // Camada de segurança cambial: se o hotel vier em moeda estrangeira sem conversão prévia, converte para BRL
+    const rawCurrency = (hotel.originalCurrency || hotel.currency || "BRL").trim().toUpperCase();
+    const fxMultiplier = (hotel.currency === "BRL" && !hotel.originalCurrency) ? 1.0 : (hotel.fxRateToBRL || getSyncExchangeRateToBRL(rawCurrency));
+    const isAlreadyConverted = hotel.currency === "BRL" && hotel.fxRateToBRL;
+
+    const netRate = isAlreadyConverted
+      ? Math.max(1, Number(hotel.minRate || 100))
+      : Math.max(1, Math.round(Number(hotel.minRate || 100) * fxMultiplier * 100) / 100);
+
     const barRate = Math.max(
       Math.round(netRate * 1.3),
-      Number(hotel.maxRate || Math.round(netRate * 1.45))
+      isAlreadyConverted
+        ? Number(hotel.maxRate || Math.round(netRate * 1.45))
+        : Math.round(Number(hotel.maxRate || Math.round(netRate * 1.45)) * fxMultiplier * 100) / 100
     );
 
     let clubPricing;

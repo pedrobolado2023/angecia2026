@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWhatsAppVerificationCode } from "@/lib/customerStore";
+import { markCustomerVerifiedInPostgres } from "@/lib/postgres";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +22,13 @@ export async function POST(request: NextRequest) {
     }
 
     const customer = verifyWhatsAppVerificationCode(identifier, code);
+
+    // Atualiza status de verificação no PostgreSQL
+    try {
+      await markCustomerVerifiedInPostgres(identifier);
+    } catch (pgErr) {
+      console.warn("[Verify Route] Aviso: Falha ao marcar verificação no PostgreSQL:", pgErr);
+    }
 
     // Cria token seguro de sessão do cliente
     const sessionPayload = {

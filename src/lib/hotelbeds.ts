@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { fetchLiveExchangeRates } from "./currency";
 
 export interface HotelbedsConfig {
   apiKey: string;
@@ -29,6 +30,9 @@ export interface HotelbedsRate {
   paymentType?: string;
   boardCode: string;
   boardName: string;
+  originalNet?: number;
+  originalCurrency?: string;
+  fxRate?: number;
   cancellationPolicies?: Array<{
     amount: number;
     from: string;
@@ -145,6 +149,9 @@ export interface HotelbedsHotelResult {
   minRate: number;
   maxRate: number;
   currency: string;
+  originalCurrency?: string;
+  originalMinRate?: number;
+  fxRateToBRL?: number;
   heroImage?: string;
   gallery?: string[];
   description?: string;
@@ -512,6 +519,9 @@ export async function searchHotelbedsAvailability(params: {
     const data = await res.json();
     const hotelsList = data.hotels?.hotels || [];
 
+    // Busca cotações de câmbio ao vivo (Banco Central / AwesomeAPI) para converter EUR/USD -> BRL
+    const liveRates = await fetchLiveExchangeRates();
+
     // Hidrata em lote as fotos oficiais do CDN GIATA, descrições e comodidades
     const codes = hotelsList.map((h: any) => h.code);
     let contentMap: Record<string | number, HotelbedsContentData> = {};
@@ -525,6 +535,14 @@ export async function searchHotelbedsAvailability(params: {
 
     const mappedHotels: HotelbedsHotelResult[] = hotelsList.map((h: any) => {
       const content = contentMap[h.code];
+      const rawCurrency = (h.currency || "BRL").trim().toUpperCase();
+      const fxRate = liveRates[rawCurrency] || 1.0;
+
+      const rawMinRate = Number(h.minRate || 0);
+      const rawMaxRate = Number(h.maxRate || 0);
+      const minRateBRL = Math.round(rawMinRate * fxRate * 100) / 100;
+      const maxRateBRL = Math.round(rawMaxRate * fxRate * 100) / 100;
+
       return {
         code: h.code,
         name: h.name,
@@ -536,9 +554,12 @@ export async function searchHotelbedsAvailability(params: {
         zoneName: h.zoneName,
         latitude: h.latitude,
         longitude: h.longitude,
-        minRate: Number(h.minRate || 0),
-        maxRate: Number(h.maxRate || 0),
-        currency: h.currency || "BRL",
+        minRate: minRateBRL,
+        maxRate: maxRateBRL,
+        currency: "BRL",
+        originalCurrency: rawCurrency,
+        originalMinRate: rawMinRate,
+        fxRateToBRL: fxRate,
         heroImage: content?.heroImage,
         gallery: content?.gallery || [],
         description: content?.description,
@@ -575,19 +596,33 @@ export async function searchHotelbedsAvailability(params: {
             name: translateHotelbedsRoomName(r.name),
             heroImage: roomHeroImage,
             gallery: resolvedRoomImages.length > 0 ? resolvedRoomImages : (roomHeroImage ? [roomHeroImage] : []),
-            rates: (r.rates || []).map((rate: any) => ({
-              rateKey: rate.rateKey,
-              rateClass: rate.rateClass,
-              rateType: rate.rateType,
-              net: Number(rate.net || 0),
-              sellingRate: rate.sellingRate ? Number(rate.sellingRate) : undefined,
-              hotelMandatory: rate.hotelMandatory,
-              allotted: rate.allotted,
-              paymentType: rate.paymentType,
-              boardCode: rate.boardCode,
-              boardName: rate.boardName,
-              cancellationPolicies: rate.cancellationPolicies,
-            })),
+            rates: (r.rates || []).map((rate: any) => {
+              const rawNet = Number(rate.net || 0);
+              const netBRL = Math.round(rawNet * fxRate * 100) / 100;
+              const sellingRateBRL = rate.sellingRate
+                ? Math.round(Number(rate.sellingRate) * fxRate * 100) / 100
+                : undefined;
+
+              return {
+                rateKey: rate.rateKey,
+                rateClass: rate.rateClass,
+                rateType: rate.rateType,
+                net: netBRL,
+                sellingRate: sellingRateBRL,
+                originalNet: rawNet,
+                originalCurrency: rawCurrency,
+                fxRate: fxRate,
+                hotelMandatory: rate.hotelMandatory,
+                allotted: rate.allotted,
+                paymentType: rate.paymentType,
+                boardCode: rate.boardCode,
+                boardName: rate.boardName,
+                cancellationPolicies: (rate.cancellationPolicies || []).map((cp: any) => ({
+                  amount: Math.round(Number(cp.amount || 0) * fxRate * 100) / 100,
+                  from: cp.from,
+                })),
+              };
+            }),
           };
         }),
       };

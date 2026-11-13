@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerCustomerProfile, CustomerAddress } from "@/lib/customerStore";
 import { sendWhatsAppVerificationCode } from "@/lib/wacliService";
+import { saveCustomerToPostgres } from "@/lib/postgres";
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,6 +74,13 @@ export async function POST(request: NextRequest) {
       password: password ? String(password).trim() : undefined,
       address: customerAddress,
     });
+
+    // Persiste imediatamente no banco de dados PostgreSQL
+    try {
+      await saveCustomerToPostgres(customer, verificationCode);
+    } catch (pgErr) {
+      console.warn("[Register Route] Aviso: Falha ao persistir no PostgreSQL (contingência CRM JSON mantida):", pgErr);
+    }
 
     // Dispara via WACLI (WhatsApp)
     const wacliResult = await sendWhatsAppVerificationCode({
