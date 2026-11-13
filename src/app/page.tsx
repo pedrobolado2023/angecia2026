@@ -23,6 +23,7 @@ import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
 import { MembershipRenewalModal } from "@/components/MembershipRenewalModal";
 import { LegalTermsModal, LegalModalTab } from "@/components/LegalTermsModal";
+import { BlackFridayModal } from "@/components/BlackFridayModal";
 import Link from "next/link";
 import {
   Sparkles,
@@ -342,6 +343,26 @@ export default function HospedeClubApp() {
   const [isPricingDrawerOpen, setIsPricingDrawerOpen] = useState<boolean>(false);
   const [isCouncilModalOpen, setIsCouncilModalOpen] = useState<boolean>(false);
   const [isExtranetModalOpen, setIsExtranetModalOpen] = useState<boolean>(false);
+  const [isBlackFridayModalOpen, setIsBlackFridayModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const dismissed = sessionStorage.getItem("hospede_bf_dismissed");
+      if (!dismissed) {
+        const timer = setTimeout(() => {
+          setIsBlackFridayModalOpen(true);
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
+
+  const handleCloseBlackFriday = useCallback(() => {
+    setIsBlackFridayModalOpen(false);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("hospede_bf_dismissed", "true");
+    }
+  }, []);
 
   const [pushNotificationBanner, setPushNotificationBanner] = useState<string | null>(null);
   const [countdownTick, setCountdownTick] = useState<number>(0);
@@ -833,6 +854,23 @@ export default function HospedeClubApp() {
   useEffect(() => {
     fetchLiveHotelbedsHotels("RIO");
   }, [fetchLiveHotelbedsHotels]);
+
+  const handleSelectBlackFridayDeal = useCallback(
+    (cityId: string, cityName: string) => {
+      handleCloseBlackFriday();
+      setSelectedCityId(cityId);
+      setActiveScreen("home");
+      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
+      fetchLiveHotelbedsHotels(hbDest, cityId);
+      setTimeout(() => {
+        const el = document.getElementById("hospede-catalog-section");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 200);
+    },
+    [handleCloseBlackFriday, fetchLiveHotelbedsHotels]
+  );
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1573,26 +1611,6 @@ export default function HospedeClubApp() {
               Início
             </button>
             <button
-              onClick={() => setActiveScreen("destination")}
-              className={`py-1 transition cursor-pointer border-b-2 ${
-                activeScreen === "destination"
-                  ? "text-[#9A6D28] border-[#B8863B] font-medium"
-                  : "text-[#5C646B] border-transparent hover:text-[#182026]"
-              }`}
-            >
-              Destinos ({activeDestinationCity.stateCode})
-            </button>
-            <button
-              onClick={() => setActiveScreen("hotel")}
-              className={`py-1 transition cursor-pointer border-b-2 ${
-                activeScreen === "hotel"
-                  ? "text-[#9A6D28] border-[#B8863B] font-medium"
-                  : "text-[#5C646B] border-transparent hover:text-[#182026]"
-              }`}
-            >
-              Propriedade & Suítes
-            </button>
-            <button
               onClick={() => setActiveScreen("checkout")}
               className={`py-1 transition cursor-pointer border-b-2 ${
                 activeScreen === "checkout"
@@ -1693,32 +1711,6 @@ export default function HospedeClubApp() {
                 }`}
               >
                 Início
-              </button>
-              <button
-                onClick={() => {
-                  setActiveScreen("destination");
-                  setMobileMenuOpen(false);
-                }}
-                className={`p-3 rounded-xl text-left border ${
-                  activeScreen === "destination"
-                    ? "bg-[#B8863B] text-white border-[#B8863B] font-medium"
-                    : "bg-[#FAF7F2] text-[#182026] border-[#E5DEC9]"
-                }`}
-              >
-                Destinos ({activeDestinationCity.stateCode})
-              </button>
-              <button
-                onClick={() => {
-                  setActiveScreen("hotel");
-                  setMobileMenuOpen(false);
-                }}
-                className={`p-3 rounded-xl text-left border ${
-                  activeScreen === "hotel"
-                    ? "bg-[#B8863B] text-white border-[#B8863B] font-medium"
-                    : "bg-[#FAF7F2] text-[#182026] border-[#E5DEC9]"
-                }`}
-              >
-                Propriedade & Suítes
               </button>
               <button
                 onClick={() => {
@@ -2033,7 +2025,7 @@ export default function HospedeClubApp() {
           </section>
 
           {/* SEÇÃO DE DESTINOS E COLEÇÕES EXCLUSIVAS */}
-          <section className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-8 sm:py-12">
+          <section id="hospede-catalog-section" className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-8 sm:py-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6 sm:mb-8">
               <div>
                 <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
@@ -4350,6 +4342,13 @@ export default function HospedeClubApp() {
         onClose={() => setLegalModalTab(null)}
         hotelName={selectedHotel.name}
         cancellationText={selectedCancelPolicyText}
+      />
+
+      {/* POP-UP BLACK FRIDAY PRIVÉE HÓSPEDE CLUB (10s com timer e ofertas reais) */}
+      <BlackFridayModal
+        isOpen={isBlackFridayModalOpen}
+        onClose={handleCloseBlackFriday}
+        onSelectDestination={handleSelectBlackFridayDeal}
       />
     </div>
   );
