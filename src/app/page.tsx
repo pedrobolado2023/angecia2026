@@ -1529,10 +1529,12 @@ export default function HospedeClubApp() {
             }}
             className="text-left group cursor-pointer flex items-center gap-2 sm:gap-3 min-w-0"
           >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-[#B8863B] flex items-center justify-center bg-[#B8863B]/10 group-hover:bg-[#B8863B] group-hover:text-white transition shrink-0">
-              <span className="font-editorial text-base sm:text-lg text-[#9A6D28] group-hover:text-white font-normal">
-                H
-              </span>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden border border-[#B8863B]/60 shadow-xs flex items-center justify-center bg-[#11161B] group-hover:border-[#B8863B] group-hover:scale-105 transition shrink-0">
+              <img
+                src="/icon.svg"
+                alt="Hóspede Club"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div className="truncate">
               <span className="font-editorial text-lg sm:text-2xl tracking-[0.16em] sm:tracking-[0.22em] text-[#182026] font-normal block leading-none truncate">

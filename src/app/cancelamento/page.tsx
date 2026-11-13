@@ -21,9 +21,18 @@ export default function CancelamentoPage() {
             <ArrowLeft className="w-4 h-4" />
             <span>Voltar ao Hóspede Club</span>
           </Link>
-          <span className="font-editorial text-lg tracking-[0.16em] text-[#182026]">
-            HÓSPEDE CLUB
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full overflow-hidden border border-[#B8863B]/60 shadow-xs flex items-center justify-center bg-[#11161B]">
+              <img
+                src="/icon.svg"
+                alt="Hóspede Club"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <span className="font-editorial text-lg tracking-[0.16em] text-[#182026]">
+              HÓSPEDE CLUB
+            </span>
+          </div>
         </div>
       </header>
 
