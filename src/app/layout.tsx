@@ -1,9 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 const siteUrl = "https://hospedeclub.q-aura.com.br";
 const ogImageUrl =
   "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&h=630&q=85";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#11161B",
+};
 
 export const metadata: Metadata = {
   title: "Hóspede Club | Hospedagens e Hotéis com Desconto Exclusivo",

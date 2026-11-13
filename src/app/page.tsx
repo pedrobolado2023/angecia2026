@@ -3938,68 +3938,76 @@ export default function HospedeClubApp() {
 
 
 
-      {/* BARRA INFERIOR MOBILE CLARA */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-[#E5DEC9] px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))]">
-        <div className="grid grid-cols-5 gap-1 max-w-md mx-auto">
-          <button
-            onClick={() => {
-              setActiveScreen("home");
-              setShowFavoritesOnly(false);
-            }}
-            className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer ${
-              activeScreen === "home" && !showFavoritesOnly
-                ? "text-[#9A6D28] font-medium"
-                : "text-[#5C646B]"
-            }`}
-          >
-            <Sparkles className="w-4 h-4 mb-0.5" />
-            <span>Início</span>
-          </button>
+      {/* BARRA INFERIOR MOBILE CLARA & OTIMIZADA PARA RESERVAS (Oculta no checkout para foco total na compra) */}
+      {activeScreen !== "checkout" && (
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-[#E5DEC9] px-3 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]">
+          <div className="grid grid-cols-4 gap-2 max-w-md mx-auto">
+            {/* Início */}
+            <button
+              onClick={() => {
+                setActiveScreen("home");
+                setShowFavoritesOnly(false);
+              }}
+              className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer touch-manipulation transition ${
+                activeScreen === "home" && !showFavoritesOnly
+                  ? "text-[#9A6D28] font-bold"
+                  : "text-[#5C646B]"
+              }`}
+            >
+              <Sparkles className="w-4 h-4 mb-0.5" />
+              <span>Início</span>
+            </button>
 
-          <button
-            onClick={() => setActiveScreen("destination")}
-            className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer ${
-              activeScreen === "destination" ? "text-[#9A6D28] font-medium" : "text-[#5C646B]"
-            }`}
-          >
-            <Compass className="w-4 h-4 mb-0.5" />
-            <span>Destinos</span>
-          </button>
+            {/* Salvos */}
+            <button
+              onClick={() => {
+                setShowFavoritesOnly(true);
+                setActiveScreen("home");
+              }}
+              className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer touch-manipulation relative transition ${
+                showFavoritesOnly ? "text-[#B83B2B] font-bold" : "text-[#5C646B]"
+              }`}
+            >
+              <div className="relative">
+                <Heart className={`w-4 h-4 mb-0.5 ${showFavoritesOnly ? "fill-[#B83B2B]" : ""}`} />
+                {favoriteIds.length > 0 && (
+                  <span className="absolute -top-1 -right-2 w-3.5 h-3.5 bg-[#B83B2B] text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                    {favoriteIds.length}
+                  </span>
+                )}
+              </div>
+              <span>Salvos</span>
+            </button>
 
-          <button
-            onClick={() => setActiveScreen("hotel")}
-            className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer ${
-              activeScreen === "hotel" ? "text-[#9A6D28] font-medium" : "text-[#5C646B]"
-            }`}
-          >
-            <Building2 className="w-4 h-4 mb-0.5" />
-            <span>Suítes</span>
-          </button>
+            {/* Clube / Seja Membro */}
+            <button
+              onClick={() => {
+                if (!loggedCustomer) {
+                  setAuthModalInitialMode("register");
+                  setIsAuthModalOpen(true);
+                } else {
+                  setShowClubModal(true);
+                }
+              }}
+              className="flex flex-col items-center justify-center py-1 text-[10px] text-[#5C646B] hover:text-[#9A6D28] cursor-pointer touch-manipulation transition"
+            >
+              <Users className="w-4 h-4 mb-0.5 text-[#B8863B]" />
+              <span className="truncate max-w-[70px]">
+                {loggedCustomer ? "Minha Conta" : "Seja Membro"}
+              </span>
+            </button>
 
-          <button
-            onClick={() => {
-              setShowFavoritesOnly(true);
-              setActiveScreen("home");
-            }}
-            className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer ${
-              showFavoritesOnly ? "text-[#9A6D28] font-medium" : "text-[#5C646B]"
-            }`}
-          >
-            <Heart className="w-4 h-4 mb-0.5" />
-            <span>Salvos</span>
-          </button>
-
-          <button
-            onClick={() => setActiveScreen("checkout")}
-            className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer ${
-              activeScreen === "checkout" ? "text-[#9A6D28] font-medium" : "text-[#5C646B]"
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 mb-0.5" />
-            <span>Reserva</span>
-          </button>
-        </div>
-      </nav>
+            {/* Reserva */}
+            <button
+              onClick={() => setActiveScreen("checkout")}
+              className="flex flex-col items-center justify-center py-1 text-[10px] text-[#5C646B] hover:text-[#9A6D28] cursor-pointer touch-manipulation transition"
+            >
+              <ShieldCheck className="w-4 h-4 mb-0.5 text-[#0F5257]" />
+              <span>Reserva</span>
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* MODAL DE CADASTRO COMPLETO DO CLIENTE NO BACKEND (HÓSPEDE CLUB) */}
       {showClubModal && (

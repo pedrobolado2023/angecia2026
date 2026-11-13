@@ -49,12 +49,14 @@
   letter-spacing: -0.02em;
 }
 
-/* Hide scrollbars cleanly on horizontal chip bars */
-.no-scrollbar::-webkit-scrollbar {
+/* Hide scrollbars cleanly on horizontal chip bars and carousels */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
   display: none;
 }
 
-.no-scrollbar {
+.no-scrollbar,
+.scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }

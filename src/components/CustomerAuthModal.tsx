@@ -370,10 +370,10 @@ export function CustomerAuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182026]/50 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
-      <div className="max-w-xl w-full bg-white text-[#182026] border border-[#DFD5C5] rounded-3xl shadow-2xl my-auto overflow-hidden animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182026]/50 backdrop-blur-sm p-2.5 sm:p-4 overflow-y-auto">
+      <div className="max-w-xl w-full max-h-[92dvh] flex flex-col bg-white text-[#182026] border border-[#DFD5C5] rounded-3xl shadow-2xl my-auto overflow-hidden animate-slide-up">
         {/* Cabeçalho do Modal */}
-        <div className="bg-[#FAF7F2] border-b border-[#EAE3D5] p-5 sm:p-6 flex items-start justify-between relative">
+        <div className="bg-[#FAF7F2] border-b border-[#EAE3D5] p-4 sm:p-6 flex items-start justify-between relative shrink-0">
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#B8863B]/10 text-[#9A6D28] text-[10px] font-semibold uppercase tracking-wider mb-2">
               <Sparkles className="w-3 h-3 text-[#B8863B]" />
@@ -404,7 +404,9 @@ export function CustomerAuthModal({
           </button>
         </div>
 
-        {/* Notificação de Contexto de Checkout */}
+        {/* Corpo do Modal com Scroll Suave no Mobile */}
+        <div className="overflow-y-auto overscroll-contain flex-1">
+          {/* Notificação de Contexto de Checkout */}
         {checkoutContextNotice && activeTab !== "verify" && (
           <div className="px-5 sm:px-6 pt-4">
             <div className="p-3 rounded-xl bg-[#0F5257]/10 border border-[#0F5257]/20 text-xs text-[#0F5257] flex items-center gap-2">
@@ -890,6 +892,7 @@ export function CustomerAuthModal({
             </div>
           </form>
         )}
+        </div>
       </div>
     </div>
   );
