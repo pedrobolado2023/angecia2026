@@ -21,6 +21,8 @@ import { LuxuryImage } from "@/components/LuxuryImage";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
 import { MembershipRenewalModal } from "@/components/MembershipRenewalModal";
+import { LegalTermsModal, LegalModalTab } from "@/components/LegalTermsModal";
+import Link from "next/link";
 import {
   Sparkles,
   MapPin,
@@ -65,6 +67,8 @@ import {
   Calendar,
   User,
   RefreshCw,
+  FileText,
+  RotateCcw,
 } from "lucide-react";
 
 type ActiveScreen = "home" | "destination" | "hotel" | "checkout" | "admin";
@@ -212,6 +216,12 @@ export default function HospedeClubApp() {
   const [infantsCount, setInfantsCount] = useState<number>(0);
   const [isGuestsSelectorOpen, setIsGuestsSelectorOpen] = useState<boolean>(false);
   const guestsSelectorContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isHotelGuestsOpen, setIsHotelGuestsOpen] = useState<boolean>(false);
+  const hotelGuestsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const [legalModalTab, setLegalModalTab] = useState<LegalModalTab | null>(null);
+  const [selectedCancelPolicyText, setSelectedCancelPolicyText] = useState<string | undefined>(undefined);
+  const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
 
   const totalGuestsCount = useMemo(
     () => adultsCount + childrenCount + infantsCount,
@@ -458,6 +468,12 @@ export default function HospedeClubApp() {
       ) {
         setIsGuestsSelectorOpen(false);
       }
+      if (
+        hotelGuestsContainerRef.current &&
+        !hotelGuestsContainerRef.current.contains(event.target as Node)
+      ) {
+        setIsHotelGuestsOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutsideGuests);
     return () => document.removeEventListener("mousedown", handleClickOutsideGuests);
@@ -485,20 +501,63 @@ export default function HospedeClubApp() {
     });
   };
 
+  const getRoomCancellationInfo = useCallback((room: any) => {
+    const rate = room?.rates?.[0];
+    const isNrf =
+      rate?.rateClass === "NRF" ||
+      /não reembolsável|non-refundable|nrf/i.test(room?.boardBasis || "") ||
+      /não reembolsável/i.test(room?.name || "");
+    const firstCp = rate?.cancellationPolicies?.[0];
+
+    if (firstCp && firstCp.from) {
+      try {
+        const parts = firstCp.from.split("T")[0].split("-");
+        const d = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return {
+          label: `Cancelamento Grátis até ${d}`,
+          badgeClass: "bg-[#0F5257]/10 text-[#0F5257] border-[#0F5257]/20",
+          details: `Você pode cancelar gratuitamente com reembolso integral de 100% até o dia ${d}. Após este prazo, incidirá a penalidade da política do hotel.`,
+        };
+      } catch {
+        // fallback
+      }
+    }
+
+    if (isNrf) {
+      return {
+        label: "Tarifa Promocional Não Reembolsável (Desconto VIP)",
+        badgeClass: "bg-[#B83B2B]/10 text-[#B83B2B] border-[#B83B2B]/20",
+        details:
+          "Esta acomodação possui tarifa promocional com desconto agressivo exclusivo para membros. Não permite cancelamento com reembolso em caso de desistência voluntária.",
+      };
+    }
+
+    return {
+      label: "Cancelamento Grátis até 48h antes do check-in",
+      badgeClass: "bg-[#0F5257]/10 text-[#0F5257] border-[#0F5257]/20",
+      details:
+        "Cancelamento sem custos até 48 horas antes da data de check-in informada na reserva.",
+    };
+  }, []);
+
   const fetchLiveHotelbedsHotels = useCallback(
     async (
       destinationCode: string = "RIO",
       targetCityId?: string,
       customCheckIn?: string,
-      customCheckOut?: string
+      customCheckOut?: string,
+      customAdults?: number,
+      customChildren?: number
     ) => {
       setIsHotelbedsLoading(true);
       try {
         const checkIn = customCheckIn || checkInDate;
         const checkOut = customCheckOut || checkOutDate;
+        const adults = customAdults !== undefined ? customAdults : adultsCount;
+        const children = customChildren !== undefined ? customChildren : childrenCount;
 
         const res = await fetch(
-          `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}&adults=${adultsCount}&children=${childrenCount}`
+          `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}&adults=${adults}&children=${children}`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -1094,6 +1153,16 @@ export default function HospedeClubApp() {
 
   const handleConfirmBookingWithWebhook = async () => {
     setCheckoutError(null);
+
+    // 0. Validação Obrigatória dos Termos e LGPD
+    if (!acceptedTerms) {
+      setCheckoutError(
+        "Atenção: É obrigatório ler e aceitar os Termos e Condições, as Políticas de Cancelamento e a Proteção de Dados (LGPD) para prosseguir com a reserva."
+      );
+      const el = document.getElementById("terms-checkbox-section");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
 
     // 1. Validações do Titular
     if (!primaryFirstName.trim() || !primaryLastName.trim()) {
@@ -2541,6 +2610,236 @@ export default function HospedeClubApp() {
             </div>
           </div>
 
+          {/* BARRA DE PESQUISA, PERÍODO & HÓSPEDES INTERATIVA NA TELA DO HOTEL */}
+          <div className="bg-white border border-[#E5DEC9] rounded-2xl p-3.5 sm:p-4 mb-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-[#F0EAE0]">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#B8863B]" />
+                <span className="text-xs uppercase tracking-[0.16em] text-[#9A6D28] font-semibold">
+                  Período da Hospedagem & Destino
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-[#0F5257] bg-[#0F5257]/10 px-2.5 py-0.5 rounded-full border border-[#0F5257]/20">
+                  {nightsCount} {nightsCount === 1 ? "diária" : "diárias"}
+                </span>
+                <span className="text-[11px] text-[#5C646B]">
+                  • {totalGuestsCount} {totalGuestsCount === 1 ? "hóspede" : "hóspedes"}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+              {/* 1. SELETOR DE DESTINO / CIDADE */}
+              <div className="sm:col-span-1 lg:col-span-4 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-2 sm:pb-0 lg:pr-3">
+                <label className="block text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium mb-1 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-[#B8863B]" />
+                  <span>Destino</span>
+                </label>
+                <select
+                  value={selectedCityId}
+                  onChange={(e) => {
+                    const newCityId = e.target.value;
+                    setSelectedCityId(newCityId);
+                    const hbDest = CITY_TO_HOTELBEDS_DESTINATION[newCityId] || "RIO";
+                    fetchLiveHotelbedsHotels(hbDest, newCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+                    setActiveScreen("destination");
+                    window.scrollTo({ top: 300, behavior: "smooth" });
+                  }}
+                  className="w-full bg-[#FAF7F2] text-[#182026] text-xs font-medium px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] cursor-pointer"
+                >
+                  {DESTINATION_CITIES.map((city) => (
+                    <option key={city.id} value={city.id}>
+                      {city.name} ({city.stateCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. DATAS DE CHECK-IN E CHECK-OUT */}
+              <div className="sm:col-span-1 lg:col-span-5 border-b sm:border-b-0 lg:border-r border-[#EAE3D5] pb-2 sm:pb-0 lg:pr-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium mb-1">
+                      Check-in (Entrada)
+                    </label>
+                    <input
+                      type="date"
+                      value={checkInDate}
+                      min={getTodayString()}
+                      onChange={(e) => {
+                        const newIn = e.target.value;
+                        handleCheckInChange(newIn);
+                        const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                        const outDate = (!checkOutDate || newIn >= checkOutDate) ? addDaysToString(newIn, nightsCount > 0 ? nightsCount : 1) : checkOutDate;
+                        fetchLiveHotelbedsHotels(hbDest, selectedCityId, newIn, outDate, adultsCount, childrenCount);
+                      }}
+                      className="w-full bg-[#FAF7F2] text-[#182026] text-xs font-medium px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium mb-1">
+                      Check-out (Saída)
+                    </label>
+                    <input
+                      type="date"
+                      value={checkOutDate}
+                      min={addDaysToString(checkInDate, 1)}
+                      onChange={(e) => {
+                        const newOut = e.target.value;
+                        handleCheckOutChange(newOut);
+                        const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                        fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, newOut, adultsCount, childrenCount);
+                      }}
+                      className="w-full bg-[#FAF7F2] text-[#182026] text-xs font-medium px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. SELETOR DE HÓSPEDES & BOTÃO RECALCULAR */}
+              <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2">
+                <div ref={hotelGuestsContainerRef} className="relative flex-1">
+                  <label className="block text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium mb-1">
+                    Hóspedes
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsHotelGuestsOpen(!isHotelGuestsOpen)}
+                    className={`w-full bg-[#FAF7F2] text-[#182026] text-xs px-2.5 py-2 rounded-xl border flex items-center justify-between gap-1 transition cursor-pointer text-left ${
+                      isHotelGuestsOpen
+                        ? "border-[#B8863B] bg-white ring-2 ring-[#B8863B]/15"
+                        : "border-[#E2D9C8] hover:border-[#B8863B]/70"
+                    }`}
+                  >
+                    <span className="truncate font-medium text-xs">
+                      {guestsSummaryLabel}
+                    </span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-[#5C646B] shrink-0 transition-transform duration-200 ${
+                        isHotelGuestsOpen ? "rotate-180 text-[#B8863B]" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {/* Popover de Hóspedes no Hotel */}
+                  {isHotelGuestsOpen && (
+                    <div className="absolute right-0 w-[290px] top-full mt-2 z-50 bg-white border border-[#D5C7B2] rounded-2xl shadow-xl p-4 space-y-3.5">
+                      <div className="pb-2 border-b border-[#F0EAE0] flex items-center justify-between">
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-semibold">
+                          Composição dos Hóspedes
+                        </span>
+                        <span className="text-xs text-[#5C646B]">
+                          Total: <strong className="text-[#182026]">{totalGuestsCount}</strong>
+                        </span>
+                      </div>
+
+                      {/* Adultos */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-semibold text-[#182026] block">Adultos</span>
+                          <span className="text-[10px] text-[#5C646B]">A partir de 18 anos</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={adultsCount <= 1}
+                            onClick={() => {
+                              const nextA = Math.max(1, adultsCount - 1);
+                              setAdultsCount(nextA);
+                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, nextA, childrenCount);
+                            }}
+                            className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
+                          >
+                            -
+                          </button>
+                          <span className="w-5 text-center text-xs font-semibold text-[#182026]">{adultsCount}</span>
+                          <button
+                            type="button"
+                            disabled={adultsCount >= 8}
+                            onClick={() => {
+                              const nextA = Math.min(8, adultsCount + 1);
+                              setAdultsCount(nextA);
+                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, nextA, childrenCount);
+                            }}
+                            className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Crianças */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-semibold text-[#182026] block">Crianças</span>
+                          <span className="text-[10px] text-[#5C646B]">De 0 a 17 anos</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={childrenCount <= 0}
+                            onClick={() => {
+                              const nextC = Math.max(0, childrenCount - 1);
+                              setChildrenCount(nextC);
+                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC);
+                            }}
+                            className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
+                          >
+                            -
+                          </button>
+                          <span className="w-5 text-center text-xs font-semibold text-[#182026]">{childrenCount}</span>
+                          <button
+                            type="button"
+                            disabled={childrenCount >= 4}
+                            onClick={() => {
+                              const nextC = Math.min(4, childrenCount + 1);
+                              setChildrenCount(nextC);
+                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC);
+                            }}
+                            className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-[#F0EAE0]">
+                        <button
+                          type="button"
+                          onClick={() => setIsHotelGuestsOpen(false)}
+                          className="w-full py-1.5 rounded-lg bg-[#B8863B] text-white text-xs font-medium"
+                        >
+                          Confirmar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 sm:pt-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                      fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+                    }}
+                    disabled={isHotelbedsLoading}
+                    className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs transition cursor-pointer flex items-center justify-center gap-1 shadow-xs disabled:opacity-60"
+                    title="Recalcular Tarifas"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isHotelbedsLoading ? "animate-spin" : ""}`} />
+                    <span className="hidden sm:inline">Recalcular</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Galeria com Carrossel Compacto & Elegante */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-8">
             <div className="lg:col-span-8 relative h-52 sm:h-72 lg:h-80 rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm">
@@ -2620,6 +2919,7 @@ export default function HospedeClubApp() {
             </h2>
 
             {selectedHotel.rooms.map((room) => {
+              const cancelInfo = getRoomCancellationInfo(room);
               const roomPricing = calculateVellutoPricing(
                 room.netRate,
                 room.barRate,
@@ -2670,6 +2970,32 @@ export default function HospedeClubApp() {
                           {h}
                         </span>
                       ))}
+                    </div>
+
+                    {/* Selos de Taxas Inclusas e Política de Cancelamento */}
+                    <div className="mt-3 pt-2.5 border-t border-[#F0EAE0] space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="inline-flex items-center gap-1 font-medium bg-[#0F5257]/8 text-[#0F5257] px-2 py-0.5 rounded-md border border-[#0F5257]/15">
+                          <CheckCircle2 className="w-3 h-3 text-[#0F5257] shrink-0" />
+                          <span>Taxas e ISS inclusos &bull; Sem surpresas no check-out</span>
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className={`inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded-md border ${cancelInfo.badgeClass}`}>
+                          <RotateCcw className="w-3 h-3 shrink-0" />
+                          <span>{cancelInfo.label}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCancelPolicyText(cancelInfo.details);
+                            setLegalModalTab("cancelamento");
+                          }}
+                          className="text-[10px] text-[#9A6D28] underline hover:text-[#182026] cursor-pointer"
+                        >
+                          Ver regras
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -3239,6 +3565,69 @@ export default function HospedeClubApp() {
                   </div>
                 )}
 
+                {/* Validação Obrigatória dos Termos e LGPD */}
+                <div
+                  id="terms-checkbox-section"
+                  className={`p-4 rounded-xl border mb-5 transition ${
+                    checkoutError && !acceptedTerms
+                      ? "bg-red-50/80 border-red-300 ring-2 ring-red-400/20"
+                      : "bg-[#FAF7F2] border-[#E2D9C8]"
+                  }`}
+                >
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={acceptedTerms}
+                      onChange={(e) => {
+                        setAcceptedTerms(e.target.checked);
+                        if (e.target.checked && checkoutError) setCheckoutError(null);
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded text-[#B8863B] accent-[#B8863B] cursor-pointer"
+                    />
+                    <span className="text-xs text-[#182026] leading-relaxed select-none">
+                      Declaro que li e concordo com os{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCancelPolicyText(getRoomCancellationInfo(selectedRoom).details);
+                          setLegalModalTab("termos");
+                        }}
+                        className="text-[#9A6D28] font-semibold underline hover:text-[#182026] cursor-pointer"
+                      >
+                        Termos e Condições Gerais
+                      </button>
+                      , as{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCancelPolicyText(getRoomCancellationInfo(selectedRoom).details);
+                          setLegalModalTab("cancelamento");
+                        }}
+                        className="text-[#9A6D28] font-semibold underline hover:text-[#182026] cursor-pointer"
+                      >
+                        Políticas de Cancelamento
+                      </button>{" "}
+                      desta acomodação e a{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCancelPolicyText(getRoomCancellationInfo(selectedRoom).details);
+                          setLegalModalTab("privacidade");
+                        }}
+                        className="text-[#9A6D28] font-semibold underline hover:text-[#182026] cursor-pointer"
+                      >
+                        Proteção de Dados (LGPD)
+                      </button>
+                      .
+                    </span>
+                  </label>
+                  {checkoutError && !acceptedTerms && (
+                    <p className="text-[11px] text-red-600 font-medium mt-1.5 pl-7">
+                      * Campo obrigatório para validar sua contratação de hospedagem.
+                    </p>
+                  )}
+                </div>
+
                 {/* Botão de Fechar Reserva */}
                 <button
                   onClick={handleConfirmBookingWithWebhook}
@@ -3396,6 +3785,24 @@ export default function HospedeClubApp() {
                       </div>
                     </>
                   )}
+
+                  {/* Detalhamento de Taxas e Impostos Inclusos */}
+                  <div className="pt-2 border-t border-[#EAE3D5] space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center text-[#5C646B]">
+                      <span>Impostos & ISS:</span>
+                      <span className="text-[#0F5257] font-semibold">Inclusos (R$ 0,00)</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[#5C646B]">
+                      <span>Taxa de serviço hoteleiro:</span>
+                      <span className="text-[#0F5257] font-semibold">Inclusa</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[#5C646B] pt-0.5">
+                      <span>Política da acomodação:</span>
+                      <span className="text-[10px] font-semibold text-[#0F5257] bg-[#0F5257]/10 px-2 py-0.5 rounded-md">
+                        {getRoomCancellationInfo(selectedRoom).label}
+                      </span>
+                    </div>
+                  </div>
 
                   <div className="pt-3 border-t border-[#EAE3D5] flex justify-between items-baseline">
                     <span className="text-xs uppercase tracking-wider text-[#9A6D28] font-medium">
@@ -3762,7 +4169,19 @@ export default function HospedeClubApp() {
               Hospedagens selecionadas com desconto exclusivo para você.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs text-[#5C646B]">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-[#5C646B]">
+            <Link href="/termos" className="hover:text-[#9A6D28] transition underline font-medium">
+              Termos e Condições
+            </Link>
+            <span className="text-[#182026]/15">•</span>
+            <Link href="/cancelamento" className="hover:text-[#9A6D28] transition underline font-medium">
+              Políticas de Cancelamento
+            </Link>
+            <span className="text-[#182026]/15">•</span>
+            <Link href="/privacidade" className="hover:text-[#9A6D28] transition underline font-medium">
+              Proteção de Dados (LGPD)
+            </Link>
+            <span className="text-[#182026]/15">•</span>
             <button
               onClick={() => {
                 if (loggedCustomer) {
@@ -3820,6 +4239,15 @@ export default function HospedeClubApp() {
           setActiveScreen("destination");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
+      />
+
+      {/* MODAL DE TERMOS, LGPD E POLÍTICAS DE CANCELAMENTO */}
+      <LegalTermsModal
+        isOpen={legalModalTab !== null}
+        initialTab={legalModalTab || "termos"}
+        onClose={() => setLegalModalTab(null)}
+        hotelName={selectedHotel.name}
+        cancellationText={selectedCancelPolicyText}
       />
     </div>
   );
