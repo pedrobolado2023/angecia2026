@@ -187,7 +187,7 @@ export function AdminOmnibeesPanel({
 
   // Estado para Nova Campanha de Membros
   const [campaignTitle, setCampaignTitle] = useState<string>(
-    "Tarifa Secreta Fim de Semana: Até 28% OFF + 3% Cashback no PIX"
+    "Tarifa Secreta Fim de Semana: Até 28% OFF no PIX"
   );
   const [campaignChannel, setCampaignChannel] = useState<
     "WhatsApp VIP" | "E-mail Editorial" | "Push + WhatsApp"
@@ -196,7 +196,7 @@ export function AdminOmnibeesPanel({
     "Maceió, Maragogi, Trancoso & Rio de Janeiro"
   );
   const [campaignMessage, setCampaignMessage] = useState<string>(
-    "Olá {nome}! Como membro do Hóspede Club, você tem acesso antecipado ao nosso lote exclusivo com até 28% OFF abaixo da tarifa oficial + 3% de Cashback pagando no PIX."
+    "Olá {nome}! Como membro do Hóspede Club, você tem acesso antecipado ao nosso lote exclusivo com até 28% OFF abaixo da tarifa oficial pagando no PIX."
   );
 
   // Estado do teste de conexão com /api/omnibees (lendo process.env no servidor)
@@ -562,7 +562,7 @@ export function AdminOmnibeesPanel({
             title: campaignTitle,
             channel: campaignChannel,
             segmentFilter: crmSegmentFilter.toUpperCase(),
-            discountOffer: "Até 28% OFF + 3% Cashback PIX",
+            discountOffer: "Até 28% OFF no PIX",
             destinationFocus: campaignDestination,
             messageTemplate: campaignMessage,
             recipientsCount: filteredCustomers.length,

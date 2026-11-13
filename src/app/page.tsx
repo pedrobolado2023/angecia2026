@@ -1464,10 +1464,21 @@ export default function HospedeClubApp() {
       <div className="bg-[#F3EDE2] text-[#5C646B] border-b border-[#E3DACB] text-[11px] py-1.5 px-4 sm:px-6 md:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-[#0F5257] font-medium">
-              <Sparkles className="w-3 h-3 text-[#B8863B]" />
-              <span>Tarifas Exclusivas de Membro • Disponibilidade Confirmada em Tempo Real</span>
-            </span>
+            <button
+              onClick={() => {
+                if (!loggedCustomer) {
+                  setAuthModalInitialMode("register");
+                  setIsAuthModalOpen(true);
+                } else {
+                  setShowClubModal(true);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-[#0F5257] hover:text-[#9A6D28] font-semibold transition cursor-pointer group"
+              title="Faça parte do Hóspede Club"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#B8863B] group-hover:scale-110 transition-transform" />
+              <span>Seja Membro!</span>
+            </button>
           </div>
 
           {/* Acesso do Membro */}
@@ -2008,42 +2019,15 @@ export default function HospedeClubApp() {
                   </div>
                 </div>
 
-                {/* STATUS BAR DE TARIFAS AO VIVO */}
-                <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    {isHotelbedsLoading ? (
-                      <>
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#B8863B] animate-ping shrink-0" />
-                        <span className="text-[#9A6D28] font-semibold animate-pulse">
-                          Buscando todos os hotéis da região em tempo real...
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="text-[#0F5257] font-medium">
-                          {hotelbedsLiveBadge?.synced
-                            ? `Tarifas ao vivo sincronizadas (${hotelbedsLiveBadge.total} propriedades verificadas)`
-                            : "Conectado ao canal oficial • Atualizando tarifas ao vivo..."}
-                        </span>
-                        {hotelbedsLiveBadge?.lastUpdated && (
-                          <span className="text-[11px] text-[#5C646B] hidden sm:inline">
-                            • Atualizado às {hotelbedsLiveBadge.lastUpdated}
-                          </span>
-                        )}
-                      </>
-                    )}
+                {/* INDICADOR DE BUSCA AO VIVO (Visível para o cliente somente durante o carregamento) */}
+                {isHotelbedsLoading && (
+                  <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex items-center gap-2 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#B8863B] animate-ping shrink-0" />
+                    <span className="text-[#9A6D28] font-semibold animate-pulse">
+                      Buscando todos os hotéis da região em tempo real...
+                    </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => fetchLiveHotelbedsHotels("RIO")}
-                    disabled={isHotelbedsLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-white text-xs text-[#182026] hover:bg-[#FAF7F2] transition cursor-pointer shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isHotelbedsLoading ? "animate-spin text-[#B8863B]" : "text-[#9A6D28]"}`} />
-                    <span>{isHotelbedsLoading ? "Buscando..." : "Atualizar Tarifas"}</span>
-                  </button>
-                </div>
+                )}
               </div>
             </div>
           </section>
@@ -2666,7 +2650,7 @@ export default function HospedeClubApp() {
                           onClick={() => handleOpenHotelDetail(hotel)}
                           className="w-full min-h-[44px] py-2 px-4 rounded-xl bg-white border border-[#DFD5C5] hover:border-[#B8863B] text-[#182026] text-xs transition flex items-center justify-center cursor-pointer"
                         >
-                          Ver Suítes ({hotel.rooms.length})
+                          Ver Suítes Disponíveis
                         </button>
                       </div>
                     </div>
@@ -3456,7 +3440,7 @@ export default function HospedeClubApp() {
                         <span>PIX Instantâneo</span>
                       </span>
                       <span className="text-[10px] uppercase tracking-wider text-[#0F5257] font-semibold bg-[#0F5257]/10 px-2 py-0.5 rounded-full">
-                        +3% Cashback
+                        Aprovação Imediata
                       </span>
                     </div>
                     <p className="text-2xl font-semibold text-[#0F5257] mt-1 tabular-price">

@@ -1604,5 +1604,5 @@ export const LIVE_FOMO_NOTIFICATIONS = [
   "Última reserva feita há 11 minutos no Palácio Atlântico São Conrado por um membro de São Paulo (Economizou R$ 510/noite)",
   "Membro Hóspede Club de Brasília acabou de desbloquear Tarifa Secreta em Trancoso (-26% OFF)",
   "Apenas 2 suítes restantes com Vista Mar em São Conrado para o próximo fim de semana",
-  "Membro de Goiânia garantiu +3% de Cashback pagando via PIX no Rio Quente",
+  "Membro de Goiânia garantiu tarifa exclusiva pagando via PIX no Rio Quente",
 ];

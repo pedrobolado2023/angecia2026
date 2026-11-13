@@ -186,7 +186,7 @@ export function MembershipRenewalModal({
                     </li>
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-[#0F5257] shrink-0" />
-                      <span>Cashback exclusivo de 3% no PIX em todas as reservas</span>
+                      <span>Acesso prioritário a tarifas exclusivas e hotéis 5 estrelas</span>
                     </li>
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-[#0F5257] shrink-0" />

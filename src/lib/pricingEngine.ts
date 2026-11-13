@@ -179,11 +179,11 @@ export function calculateHospedePricing(
       netMarginOnNetPercent: pixMarginPercent,
       savingsVsBar,
       savingsVsBarPercent,
-      cashbackNextBooking: Math.round(exactPixPrice * 0.03 * 100) / 100,
+      cashbackNextBooking: 0,
       perks: [
         "Menor tarifa garantida à vista no PIX",
-        "3% de Cashback imediato creditado no Hóspede Club",
-        "Confirmação prioritária via Omnibees Push em 3 segundos",
+        "Confirmação prioritária e voucher oficial em segundos",
+        "Disponibilidade garantida sem taxas ocultas",
       ],
     },
     creditCard: {

@@ -312,13 +312,13 @@ const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
 const INITIAL_SEED_CAMPAIGNS: CampaignBroadcastRecord[] = [
   {
     id: "CAMP-101",
-    title: "Flash Deal Membros: Nordeste Pé na Areia (-28% OFF + 3% Cashback PIX)",
+    title: "Flash Deal Membros: Nordeste Pé na Areia (-28% OFF)",
     channel: "WhatsApp VIP",
     segmentFilter: "Opt-in WhatsApp Ativo",
     discountOffer: "Até 28% OFF sobre Tarifa Oficial",
     destinationFocus: "Maceió, Maragogi, Porto de Galinhas & Trancoso",
     messageTemplate:
-      "Olá {nome}! Liberamos 2 bangalôs pé na areia com Tarifa Secreta de Membro (até 28% abaixo da tarifa pública) + 3% de Cashback no PIX para este mês.",
+      "Olá {nome}! Liberamos 2 bangalôs pé na areia com Tarifa Secreta de Membro (até 28% abaixo da tarifa pública) para este mês.",
     recipientsCount: 3,
     createdAt: "2026-11-09T10:00:00.000Z",
   },

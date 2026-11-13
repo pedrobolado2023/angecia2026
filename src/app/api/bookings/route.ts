@@ -248,10 +248,7 @@ export async function POST(request: NextRequest) {
         : pricing.creditCard.installments[chosenInstallment].totalCharged * nights +
           extraFees;
 
-    const cashbackEarned =
-      paymentModality.toUpperCase() === "PIX"
-        ? pricing.pix.cashbackNextBooking * nights
-        : 0;
+    const cashbackEarned = 0;
 
     // 1. Processamento de Pagamento no Mercado Pago
     const mpResult = await processMercadoPagoPayment({
