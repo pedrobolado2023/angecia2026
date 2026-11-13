@@ -4,23 +4,45 @@ Gerencia conexão segura com o PostgreSQL no Easypanel ou nuvem.
 """
 
 import os
+import re
 import logging
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger("hospede_club.database")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+def sanitize_database_url(url: str) -> str:
+    """
+    Higieniza a DATABASE_URL. Se a senha contiver caracteres especiais como '@',
+    codifica automaticamente para '%40' evitando que o parser quebre o hostname.
+    Exemplo: postgres://user:pass@word@host:5432/db -> postgres://user:pass%40word@host:5432/db
+    """
+    if not url:
+        return url
+    
+    url = url.strip()
+    pattern = r'^(postgres(?:ql)?:\/\/[^:]+:)(.*)@([^@\/]+(?::\d+)?\/.*)$'
+    match = re.match(pattern, url)
+    if match:
+        prefix = match.group(1)       # postgres://user:
+        raw_password = match.group(2) # senha
+        suffix = match.group(3)       # host:5432/banco
+        if '@' in raw_password:
+            encoded_password = raw_password.replace('@', '%40')
+            return f"{prefix}{encoded_password}@{suffix}"
+    return url
+
+DATABASE_URL = sanitize_database_url(os.getenv("DATABASE_URL", ""))
 
 def get_db_connection():
     """
     Retorna uma conexão síncrona usando psycopg se disponível e DATABASE_URL configurada.
     """
-    if not DATABASE_URL:
+    active_url = sanitize_database_url(os.getenv("DATABASE_URL", DATABASE_URL))
+    if not active_url:
         return None
     try:
         import psycopg
-        # Ajusta sslmode caso seja nuvem
-        conn = psycopg.connect(DATABASE_URL)
+        conn = psycopg.connect(active_url)
         return conn
     except Exception as e:
         logger.warning(f"[PostgreSQL] Não foi possível conectar ao banco via DATABASE_URL: {e}")
