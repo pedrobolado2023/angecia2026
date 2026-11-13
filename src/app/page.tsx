@@ -2428,83 +2428,10 @@ export default function HospedeClubApp() {
                   Tarifas com até {activeDestinationCity.avgSavingsPercent}% de economia
                 </div>
               </div>
-
-              {/* FILTRO HORIZONTAL COMPACTO DE REGIÕES E PONTOS (EM VEZ DE CARDS GIGANTES) */}
-              {activeDestinationCity.landmarks && activeDestinationCity.landmarks.length > 0 && (
-                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[#F0EAE1] overflow-x-auto pb-1 text-xs">
-                  <span className="text-[11px] uppercase tracking-wider text-[#9A6D28] font-semibold shrink-0 mr-1">
-                    Filtrar por Região:
-                  </span>
-                  <button
-                    onClick={() => setSelectedLandmarkFilter("all")}
-                    className={`px-3 py-1.5 rounded-full shrink-0 font-medium transition cursor-pointer ${
-                      selectedLandmarkFilter === "all"
-                        ? "bg-[#182026] text-white shadow-xs"
-                        : "bg-[#F3EDE2] text-[#465058] hover:bg-[#EAE3D5]"
-                    }`}
-                  >
-                    Todas as Opções ({destinationHotels.length})
-                  </button>
-                  {activeDestinationCity.landmarks.map((lm) => {
-                    const isSelected = selectedLandmarkFilter === lm.id;
-                    return (
-                      <button
-                        key={lm.id}
-                        onClick={() => setSelectedLandmarkFilter(isSelected ? "all" : lm.id)}
-                        className={`px-3 py-1.5 rounded-full shrink-0 transition cursor-pointer ${
-                          isSelected
-                            ? "bg-[#B8863B] text-white font-medium shadow-xs"
-                            : "bg-[#F3EDE2] text-[#465058] hover:bg-[#EAE3D5]"
-                        }`}
-                      >
-                        {lm.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </section>
 
           <section className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 lg:pb-10">
-            {/* STATUS BAR DE DISPONIBILIDADE CONFIRMADA (WHITE-LABEL) */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-3.5 rounded-2xl bg-white border border-[#E5DEC9] shadow-2xs">
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${isHotelbedsLoading ? "bg-[#B8863B] animate-ping" : "bg-emerald-500 animate-pulse"} shrink-0`} />
-                <span className={`text-xs font-semibold ${isHotelbedsLoading ? "text-[#9A6D28]" : "text-[#0F5257]"}`}>
-                  {isHotelbedsLoading
-                    ? `Buscando e sincronizando todas as propriedades em ${activeDestinationCity.name}...`
-                    : `Tarifas Exclusivas Hóspede Club (${destinationHotels.length} opções com disponibilidade confirmada)`}
-                </span>
-                {hotelbedsLiveBadge?.lastUpdated && !isHotelbedsLoading && (
-                  <span className="text-[11px] text-[#5C646B] hidden sm:inline">
-                    • Atualizado às {hotelbedsLiveBadge.lastUpdated}
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  fetchLiveHotelbedsHotels(
-                    activeDestinationCity.hotelbedsDestinationCode || "RIO",
-                    activeDestinationCity.id,
-                    checkInDate,
-                    checkOutDate
-                  )
-                }
-                disabled={isHotelbedsLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5C7B2] bg-[#FAF7F2] text-xs text-[#182026] hover:bg-white transition cursor-pointer shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${
-                    isHotelbedsLoading ? "animate-spin text-[#B8863B]" : "text-[#9A6D28]"
-                  }`}
-                />
-                <span>
-                  {isHotelbedsLoading ? "Buscando..." : "Atualizar Tarifas"}
-                </span>
-              </button>
-            </div>
 
             {/* BANNER DE CARREGAMENTO AO VIVO NO DESTINO */}
             {isHotelbedsLoading && (
