@@ -13,7 +13,7 @@ import {
 } from "@/data/vellutoCatalog";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { isValidCPF } from "@/lib/cpfValidator";
-import { translateHotelbedsRoomName } from "@/lib/hotelbeds";
+import { prepareHotelbedsPhotos } from "@/lib/hotelbedsPhotos";
 import { resolveRoomCancellationPolicy } from "@/lib/cancellationPolicy";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
@@ -76,69 +76,46 @@ import {
 type ActiveScreen = "home" | "destination" | "hotel" | "checkout" | "admin";
 
 const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
-  "rio-de-janeiro": "RIO",
-  "maceio-maragogi": "MCZ",
-  "porto-de-galinhas": "REC",
-  "trancoso-praia-do-forte": "SSA",
-  "gramado-canela": "POA",
-  "campos-monte-verde": "SAO",
-  "olimpia-litoral-sp": "SAO",
-  "caldas-rio-quente-pirenopolis": "BSB",
-  "balneario-florianopolis-penha": "FLN",
-  "fortaleza-jeri-natal-pipa": "FOR",
-  // Capitais e Destinos Nacionais Diretos
-  "sao-paulo": "SAO",
-  "brasilia": "BSB",
-  "salvador": "SSA",
-  "curitiba": "CWB",
-  "belo-horizonte": "BHZ",
-  "florianopolis": "FLN",
-  "porto-alegre": "POA",
-  "recife": "REC",
-  "fortaleza": "FOR",
-  "natal": "NAT",
-  "maceio": "MCZ",
-  "goiania": "GYN",
+  "rio-de-janeiro": "RIO,BZI,ADR",
+  "maceio-maragogi": "MAO,OGI",
+  "porto-de-galinhas": "PDG,ATM",
+  "trancoso-praia-do-forte": "PSE,SVD",
+  "gramado-canela": "GRM,BGV",
+  "campos-monte-verde": "JR2,0MC",
+  "olimpia-litoral-sp": "OII,LHL",
+  "caldas-rio-quente-pirenopolis": "CLN,GOI",
+  "balneario-florianopolis-penha": "FLO,BLN,PEH",
+  "fortaleza-jeri-natal-pipa": "FTZ,JRR,NAT,PDA",
 };
 
-const DESTINATION_ALIASES: Record<string, { cityId: string; hbCode: string }> = {
-  brasilia: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  "distrito federal": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  df: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  taguatinga: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  "sao paulo": { cityId: "campos-monte-verde", hbCode: "SAO" },
-  sp: { cityId: "campos-monte-verde", hbCode: "SAO" },
-  salvador: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
-  bahia: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
-  curitiba: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
-  parana: { cityId: "balneario-florianopolis-penha", hbCode: "CWB" },
-  florianopolis: { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
-  "porto alegre": { cityId: "gramado-canela", hbCode: "POA" },
-  "rio de janeiro": { cityId: "rio-de-janeiro", hbCode: "RIO" },
-  rio: { cityId: "rio-de-janeiro", hbCode: "RIO" },
-  maceio: { cityId: "maceio-maragogi", hbCode: "MCZ" },
-  recife: { cityId: "porto-de-galinhas", hbCode: "REC" },
-  fortaleza: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "FOR" },
-  natal: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "NAT" },
-  goiania: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "GYN" },
-  "belo horizonte": { cityId: "campos-monte-verde", hbCode: "BHZ" },
-  buzios: { cityId: "rio-de-janeiro", hbCode: "RIO" },
-  angra: { cityId: "rio-de-janeiro", hbCode: "RIO" },
-  maragogi: { cityId: "maceio-maragogi", hbCode: "MCZ" },
-  canela: { cityId: "gramado-canela", hbCode: "POA" },
-  "monte verde": { cityId: "campos-monte-verde", hbCode: "SAO" },
-  "campos do jordao": { cityId: "campos-monte-verde", hbCode: "SAO" },
-  olimpia: { cityId: "olimpia-litoral-sp", hbCode: "SAO" },
-  "caldas novas": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  "rio quente": { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  pirenopolis: { cityId: "caldas-rio-quente-pirenopolis", hbCode: "BSB" },
-  "balneario camboriu": { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
-  penha: { cityId: "balneario-florianopolis-penha", hbCode: "FLN" },
-  jericoacoara: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "FOR" },
-  pipa: { cityId: "fortaleza-jeri-natal-pipa", hbCode: "NAT" },
-  trancoso: { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
-  "praia do forte": { cityId: "trancoso-praia-do-forte", hbCode: "SSA" },
-};
+const HOTELBEDS_PLACES: [string, string, string][] = [
+  ["rio de janeiro", "RIO", "rio-de-janeiro"], ["rio", "RIO", "rio-de-janeiro"],
+  ["buzios", "BZI", "rio-de-janeiro"], ["angra dos reis", "ADR", "rio-de-janeiro"],
+  ["maceio", "MAO", "maceio-maragogi"], ["maragogi", "OGI", "maceio-maragogi"],
+  ["porto de galinhas", "PDG", "porto-de-galinhas"], ["carneiros", "ATM", "porto-de-galinhas"], ["recife", "RCF", "porto-de-galinhas"],
+  ["trancoso", "PSE", "trancoso-praia-do-forte"], ["praia do forte", "SVD", "trancoso-praia-do-forte"],
+  ["salvador", "SVD", "trancoso-praia-do-forte"],
+  ["gramado", "GRM", "gramado-canela"], ["bento goncalves", "BGV", "gramado-canela"], ["canela", "GRM", "gramado-canela"],
+  ["campos do jordao", "JR2", "campos-monte-verde"], ["monte verde", "0MC", "campos-monte-verde"],
+  ["sao paulo", "SAO", "olimpia-litoral-sp"], ["olimpia", "OII", "olimpia-litoral-sp"],
+  ["ilhabela", "LHL", "olimpia-litoral-sp"],
+  ["caldas novas", "CLN", "caldas-rio-quente-pirenopolis"], ["rio quente", "CLN", "caldas-rio-quente-pirenopolis"],
+  ["pirenopolis", "GOI", "caldas-rio-quente-pirenopolis"], ["goiania", "GOI", "caldas-rio-quente-pirenopolis"],
+  ["brasilia", "BSB", "caldas-rio-quente-pirenopolis"],
+  ["florianopolis", "FLO", "balneario-florianopolis-penha"], ["balneario camboriu", "BLN", "balneario-florianopolis-penha"],
+  ["penha", "PEH", "balneario-florianopolis-penha"], ["curitiba", "CUR", "balneario-florianopolis-penha"],
+  ["fortaleza", "FTZ", "fortaleza-jeri-natal-pipa"], ["jericoacoara", "JRR", "fortaleza-jeri-natal-pipa"],
+  ["natal", "NAT", "fortaleza-jeri-natal-pipa"], ["pipa", "PDA", "fortaleza-jeri-natal-pipa"],
+  ["porto alegre", "POO", "gramado-canela"], ["belo horizonte", "BHZ", "campos-monte-verde"],
+];
+
+function saoPauloDate(offset = 0) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const date = new Date(`${today}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 
 export default function HospedeClubApp() {
   const [hotelsCatalog, setHotelsCatalog] = useState<CuratedHotel[]>(CURATED_HOTELS);
@@ -147,13 +124,12 @@ export default function HospedeClubApp() {
 
   // Estado da sincronização ao vivo com Hotelbeds APItude
   const [isHotelbedsLoading, setIsHotelbedsLoading] = useState<boolean>(false);
-  const [hotelbedsLiveBadge, setHotelbedsLiveBadge] = useState<{
-    synced: boolean;
-    total: number;
-    destination: string;
-    isSimulation: boolean;
-    lastUpdated: string;
-  } | null>(null);
+  const [hotelbedsError, setHotelbedsError] = useState("");
+  const [hotelbedsNotice, setHotelbedsNotice] = useState("");
+  const [hotelbedsResult, setHotelbedsResult] = useState<CuratedHotel[]>([]);
+  const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
+  const hotelbedsRequest = useRef<AbortController | null>(null);
+  const activeHotelbedsDestination = useRef("RIO,BZI,ADR");
 
   const [favoriteIds, setFavoriteIds] = useState<string[]>(["velluto-palace-sao-conrado"]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState<boolean>(false);
@@ -195,13 +171,19 @@ export default function HospedeClubApp() {
   const [accommodationTab, setAccommodationTab] = useState<"all" | "hotel" | "villa">("all");
   const [selectedLandmarkFilter, setSelectedLandmarkFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [hotelSearchFilter, setHotelSearchFilter] = useState("");
 
-  const [checkInDate, setCheckInDate] = useState<string>("2026-11-13");
-  const [checkOutDate, setCheckOutDate] = useState<string>("2026-11-14");
+  const [checkInDate, setCheckInDate] = useState("");
+  const [checkOutDate, setCheckOutDate] = useState("");
   const [nightsCount, setNightsCount] = useState<number>(1);
 
+  useEffect(() => {
+    setCheckInDate(saoPauloDate(1));
+    setCheckOutDate(saoPauloDate(2));
+  }, []);
+
   const getTodayString = useCallback(() => {
-    return new Date().toISOString().split("T")[0];
+    return saoPauloDate();
   }, []);
 
   const addDaysToString = useCallback((dateStr: string, days: number) => {
@@ -293,7 +275,7 @@ export default function HospedeClubApp() {
   const selectedRoom = useMemo(
     () =>
       selectedHotel.rooms.find((r) => r.id === selectedRoomId) ||
-      selectedHotel.rooms[0],
+      selectedHotel.rooms[0] || CURATED_HOTELS[0].rooms[0],
     [selectedHotel, selectedRoomId]
   );
 
@@ -615,245 +597,139 @@ export default function HospedeClubApp() {
       customCheckIn?: string,
       customCheckOut?: string,
       customAdults?: number,
-      customChildren?: number
+      customChildren?: number,
+      propertyQuery?: string,
+      hotelCode?: string | number
     ) => {
+      hotelbedsRequest.current?.abort();
+      const controller = new AbortController();
+      hotelbedsRequest.current = controller;
+      const { signal } = controller;
+      activeHotelbedsDestination.current = destinationCode;
+      setHotelbedsError("");
+      setHotelbedsNotice("");
+      setHotelbedsResult([]);
       setIsHotelbedsLoading(true);
+      setIsLoadingPhotos(false);
+      const checkIn = customCheckIn || checkInDate;
+      const checkOut = customCheckOut || checkOutDate;
+      const cityId = targetCityId || selectedCityId;
       try {
-        const checkIn = customCheckIn || checkInDate;
-        const checkOut = customCheckOut || checkOutDate;
-        const adults = customAdults !== undefined ? customAdults : adultsCount;
-        const children = customChildren !== undefined ? customChildren : childrenCount;
-
-        const res = await fetch(
-          `/api/hotelbeds/availability?checkIn=${checkIn}&checkOut=${checkOut}&destinationCode=${destinationCode}&adults=${adults}&children=${children}`
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-
-        if (data.ok && data.hotels && data.hotels.length > 0) {
-          setHotelsCatalog((prevCatalog) => {
-            const resolvedCityId = targetCityId || selectedCityId;
-            // Cria mapa com os hotéis ao vivo retornados pela Hotelbeds
-            const liveMap = new Map<string, any>();
-            data.hotels.forEach((lh: any) => {
-              if (lh.code) liveMap.set(String(lh.code), lh);
-            });
-
-            // Atualiza os hotéis do catálogo apenas se houver correspondência com o código do hotel
-            const updated = prevCatalog.map((h) => {
-              const liveHotel = h.hotelbedsCode ? liveMap.get(String(h.hotelbedsCode)) : null;
-              if (!liveHotel || !liveHotel.hospedeClubPricing) return h;
-
-              const net = liveHotel.hospedeClubPricing.netRate || h.netRate;
-              const bar = liveHotel.hospedeClubPricing.barRate || h.barRate;
-
-              // Mapeia TODOS os quartos entregues pela Hotelbeds
-              let resolvedRooms = h.rooms;
-              if (liveHotel.rooms && liveHotel.rooms.length > 0) {
-                resolvedRooms = liveHotel.rooms.map((hbRoom: any, rIdx: number) => {
-                  const firstRate = hbRoom.rates?.[0];
-                  const roomNet = Number(firstRate?.net || liveHotel.hospedeClubPricing?.netRate || net);
-                  const roomBar = Number(firstRate?.sellingRate || Math.round(roomNet * 1.35));
-                  const boardName = firstRate?.boardName || h.scarcityLabel || "Café da Manhã Incluso";
-                  const cleanName = translateHotelbedsRoomName(hbRoom.name || `Quarto ${rIdx + 1}`);
-                  const isFrenteMar = /frente mar|ocean|vista mar|mar/i.test(cleanName);
-                  const roomHeroImage = hbRoom.heroImage || h.rooms?.[rIdx]?.heroImage || liveHotel.heroImage || h.heroImage;
-
-                  return {
-                    id: `hb-rm-${liveHotel.code}-${rIdx}-${hbRoom.code || rIdx}`,
-                    name: cleanName,
-                    sizeM2: 34 + rIdx * 8,
-                    viewLabel: isFrenteMar ? "Vista Panorâmica Frontal para o Oceano" : "Vista Cidade & Montanha",
-                    bedConfig: /twin/i.test(cleanName) ? "2 Camas de Solteiro" : "1 Cama King Size",
-                    netRate: roomNet,
-                    barRate: roomBar,
-                    omnibeesAvailableCount: firstRate?.allotted || 3,
-                    minStay: 1,
-                    boardBasis: boardName,
-                    highlights: [
-                      boardName,
-                      "Disponibilidade confirmada em tempo real",
-                      isFrenteMar ? "Varanda com vista mar" : "Andar executivo",
-                      "Emissão imediata de voucher oficial",
-                    ],
-                    heroImage: roomHeroImage,
-                    gallery: hbRoom.gallery || (roomHeroImage ? [roomHeroImage] : []),
-                    rates: hbRoom.rates,
-                  };
-                });
-              }
-
-              return {
-                ...h,
-                netRate: net,
-                barRate: bar,
-                hotelbedsCode: liveHotel.code,
-                heroImage: liveHotel.heroImage || h.heroImage,
-                gallery: (liveHotel.gallery && liveHotel.gallery.length > 0) ? liveHotel.gallery : h.gallery,
-                scarcityLabel: `Disponibilidade Confirmada • ${
-                  liveHotel.rooms?.[0]?.rates?.[0]?.boardName ||
-                  "Café da Manhã Incluso"
-                }`,
-                rooms: resolvedRooms,
-              };
-            });
-
-            // Adiciona novos hotéis retornados pelo canal oficial de disponibilidade
-            const existingCodes = new Set(
-              updated.map((h) => String(h.hotelbedsCode || h.id))
-            );
-            const newHotelsToAdd: CuratedHotel[] = [];
-
-            data.hotels.forEach((hbHotel: any, idx: number) => {
-              const codeStr = String(hbHotel.code);
-              if (!existingCodes.has(codeStr) && hbHotel.hospedeClubPricing) {
-                existingCodes.add(codeStr);
-
-                // Curadoria contextual de fotos: urbano vs resort
-                const isUrban = /brasilia|taguatinga|sao paulo|curitiba|belo horizonte|porto alegre|goiania|campinas|florianopolis/i.test(
-                  `${hbHotel.name} ${hbHotel.destinationName || ""} ${hbHotel.zoneName || ""}`
-                ) || /comfort|suites|ibis|mercure|novotel|windsor|bourbon|transamerica|bristol|hotel|flat|executivo/i.test(
-                  hbHotel.name
-                );
-
-                const urbanPhotos = [
-                  "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=85",
-                ];
-
-                const resortPhotos = [
-                  "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=85",
-                  "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=85",
-                ];
-
-                const photoPalette = isUrban ? urbanPhotos : resortPhotos;
-                const fallbackHero = photoPalette[idx % photoPalette.length];
-                const fallbackGallery = [
-                  photoPalette[(idx + 1) % photoPalette.length],
-                  photoPalette[(idx + 2) % photoPalette.length],
-                  photoPalette[(idx + 3) % photoPalette.length],
-                ];
-
-                const heroImage = hbHotel.heroImage || fallbackHero;
-                const gallery = (hbHotel.gallery && hbHotel.gallery.length > 0) ? hbHotel.gallery : fallbackGallery;
-
-                newHotelsToAdd.push({
-                  id: `hotelbeds-${hbHotel.code}`,
-                  hotelbedsCode: hbHotel.code,
-                  name: hbHotel.name,
-                  subtitle: `${
-                    hbHotel.categoryName || "Hotel Selecionado"
-                  } • Tarifa Exclusiva Hóspede Club`,
-                  cityId: resolvedCityId,
-                  cityName: hbHotel.destinationName || (resolvedCityId === "rio-de-janeiro" ? "Rio de Janeiro" : "Destino Nacional"),
-                  stateCode: (hbHotel.destinationCode === "RIO" || resolvedCityId === "rio-de-janeiro") ? "RJ" : "BR",
-                  neighborhood: hbHotel.zoneName || "Área Nobre",
-                  clusterId: "cluster-1",
-                  accommodationType: "hotel",
-                  stars: hbHotel.categoryCode?.startsWith("5") ? 5 : hbHotel.categoryCode?.startsWith("4") ? 4 : 4,
-                  ratingScore: 9.2 + ((idx * 3) % 7) / 10,
-                  reviewsCount: 190 + idx * 25,
-                  heroImage: heroImage,
-                  gallery: gallery,
-                  netRate: hbHotel.hospedeClubPricing.netRate,
-                  barRate: hbHotel.hospedeClubPricing.barRate,
-                  omnibeesAvailableRooms: 3,
-                  scarcityLabel: `Tarifa de Membro • ${
-                    hbHotel.rooms?.[0]?.rates?.[0]?.boardName ||
-                    "Café da Manhã Incluso"
-                  }`,
-                  liveViewersCount: 12 + idx * 2,
-                  lastBookingNotice:
-                    "Tarifa especial com disponibilidade confirmada em tempo real",
-                  isFlashDeal: idx === 0,
-                  flashDealRemainingSeconds: 7200,
-                  omnibeesChannelCode: `HB-${hbHotel.code}`,
-                  primaryLandmarkDistance: hbHotel.address
-                    ? `Localizado em ${hbHotel.address}`
-                    : `Localizado em ${hbHotel.zoneName || "área nobre"}`,
-                  landmarkDistances: [
-                    {
-                      landmarkName: "Centro & Acesso Principal",
-                      distanceText: "Localização privilegiada",
-                      walkOrDrive: "walk" as const,
-                    },
-                  ],
-                  curationHighlights: (hbHotel.facilities && hbHotel.facilities.length > 0)
-                    ? [
-                        ...hbHotel.facilities.slice(0, 2),
-                        hbHotel.rooms?.[0]?.rates?.[0]?.boardName || "Café da manhã incluso",
-                        "Reserva confirmada com emissão imediata de voucher",
-                      ]
-                    : [
-                        "Tarifa de canal direto com desconto exclusivo de membro",
-                        hbHotel.rooms?.[0]?.rates?.[0]?.boardName || "Café da manhã incluso",
-                        "Reserva confirmada com emissão imediata de voucher",
-                      ],
-                  rooms: (hbHotel.rooms || []).map((r: any, rIdx: number) => {
-                    const cleanName = translateHotelbedsRoomName(r.name || "Quarto Executivo Superior");
-                    const rmHero = r.heroImage || (hbHotel.gallery && hbHotel.gallery[rIdx % hbHotel.gallery.length]) || heroImage;
-                    return {
-                      id: `hb-rm-${hbHotel.code}-${rIdx}`,
-                      name: cleanName,
-                      sizeM2: 38 + rIdx * 12,
-                      viewLabel: /mar|ocean/i.test(cleanName) ? "Vista Mar" : "Vista Panorâmica",
-                      bedConfig: /twin/i.test(cleanName) ? "2 Camas de Solteiro" : "1 Cama King Size",
-                      netRate:
-                        r.rates?.[0]?.net || hbHotel.hospedeClubPricing.netRate,
-                      barRate:
-                        r.rates?.[0]?.sellingRate ||
-                        hbHotel.hospedeClubPricing.barRate,
-                      omnibeesAvailableCount: r.rates?.[0]?.allotted || 2,
-                      minStay: 1,
-                      boardBasis:
-                        r.rates?.[0]?.boardName || "Café da Manhã Incluso",
-                      highlights: [
-                        r.rates?.[0]?.boardName || "Café da Manhã Incluso",
-                        "Confirmação imediata",
-                        "Emissão de voucher oficial",
-                      ],
-                      heroImage: rmHero,
-                      gallery: r.gallery || (rmHero ? [rmHero] : []),
-                      rates: r.rates,
-                    };
-                  }),
-                });
-              }
-            });
-
-            return [...newHotelsToAdd, ...updated];
-          });
-
-          setHotelbedsLiveBadge({
-            synced: true,
-            total: data.total || data.hotels.length,
-            destination: destinationCode,
-            isSimulation: Boolean(data.isSimulation),
-            lastUpdated: new Date().toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          });
+        if (checkIn < saoPauloDate() || checkOut <= checkIn) {
+          throw new Error("Confira as datas de entrada e saída.");
         }
+        const destinationCodes = propertyQuery || hotelCode ? [destinationCode.split(",")[0]] : [...new Set(destinationCode.split(","))];
+        const responses = await Promise.allSettled(destinationCodes.map(async (code) => {
+          const params = new URLSearchParams({
+            checkIn, checkOut, destinationCode: code,
+            adults: String(customAdults ?? adultsCount),
+            children: String(customChildren ?? childrenCount),
+            infants: String(infantsCount),
+          });
+          if (propertyQuery) params.set("property", propertyQuery);
+          if (hotelCode) params.set("hotelCodes", String(hotelCode));
+          const res = await fetch(`/api/hotelbeds/availability?${params}`, {
+            signal: AbortSignal.any([signal, AbortSignal.timeout(90000)]),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok || data.isSimulation || !Array.isArray(data.hotels)) throw new Error();
+          return data;
+        }));
+        if (signal.aborted) return;
+        const successful = responses.flatMap((response) => response.status === "fulfilled" ? [response.value] : []);
+        if (!successful.length) throw new Error("Não foi possível consultar a Hotelbeds. Tente pesquisar novamente.");
+
+        const uniqueHotels = new Map<string, any>();
+        successful.forEach((result) => result.hotels.forEach((hotel: any) => {
+          if (hotel.code && hotel.hospedeClubPricing) uniqueHotels.set(String(hotel.code), hotel);
+        }));
+        const officialHotels = [...uniqueHotels.values()];
+        setIsLoadingPhotos(true);
+        const loadedPhotos = await prepareHotelbedsPhotos(officialHotels.flatMap((hotel) => [
+          hotel.heroImage, ...(hotel.gallery || []),
+          ...(hotel.rooms || []).flatMap((room: any) => [room.heroImage, ...(room.gallery || [])]),
+        ]), signal);
+        if (signal.aborted) return;
+        const city = DESTINATION_CITIES.find((item) => item.id === cityId);
+        const photos = (hero: string | undefined, gallery: string[] | undefined) =>
+          [...new Set([hero, ...(gallery || [])])].filter((url): url is string => Boolean(url && loadedPhotos.has(url)));
+        const hotels: CuratedHotel[] = officialHotels.map((hotel) => {
+          const gallery = photos(hotel.heroImage, hotel.gallery);
+          const { netRate, barRate } = hotel.hospedeClubPricing;
+          const existingId = CURATED_HOTELS.find((item) => String(item.hotelbedsCode) === String(hotel.code))?.id;
+          return {
+            id: existingId || `hotelbeds-${hotel.code}`,
+            hotelbedsCode: hotel.code,
+            name: hotel.name,
+            subtitle: hotel.categoryName || "Hospedagem",
+            cityId,
+            cityName: hotel.city || hotel.destinationName || city?.shortName || "",
+            stateCode: "BR",
+            neighborhood: hotel.zoneName || "",
+            clusterId: city?.clusterId || "cluster-1",
+            accommodationType: "hotel",
+            stars: Number.parseInt(hotel.categoryCode || "", 10) || 0,
+            ratingScore: 0,
+            reviewsCount: 0,
+            heroImage: gallery[0] || "",
+            gallery,
+            netRate,
+            barRate,
+            omnibeesAvailableRooms: hotel.rooms?.[0]?.rates?.[0]?.allotted ?? 1,
+            scarcityLabel: hotel.rooms?.[0]?.rates?.[0]?.boardName || "Consulte as tarifas disponíveis",
+            liveViewersCount: 0,
+            lastBookingNotice: "",
+            isFlashDeal: false,
+            flashDealRemainingSeconds: 0,
+            omnibeesChannelCode: `HB-${hotel.code}`,
+            primaryLandmarkDistance: hotel.address || hotel.zoneName || "",
+            landmarkDistances: [],
+            curationHighlights: [hotel.description, ...(hotel.facilities || [])].filter(Boolean),
+            rooms: (hotel.rooms || []).filter((room: any) => room.rates?.length).map((room: any) => {
+              const rate = room.rates[0];
+              const roomPhotos = photos(room.heroImage, room.gallery);
+              return {
+                id: `hb-rm-${hotel.code}-${room.code}`,
+                name: room.name || "Quarto",
+                sizeM2: 0,
+                viewLabel: "",
+                bedConfig: "",
+                netRate: rate.net || netRate,
+                barRate: rate.sellingRate || barRate,
+                omnibeesAvailableCount: rate.allotted ?? 1,
+                minStay: 1,
+                boardBasis: rate.boardName || "",
+                highlights: [],
+                heroImage: roomPhotos[0],
+                gallery: roomPhotos,
+                rates: room.rates,
+              };
+            }),
+          };
+        });
+        if (successful.length < destinationCodes.length || successful.some((result) => result.contentIncomplete)) {
+          setHotelbedsNotice("A Hotelbeds retornou dados incompletos. Você pode repetir a busca para tentar carregar o restante.");
+        } else if (hotels.some((hotel) => !hotel.heroImage)) {
+          setHotelbedsNotice("Alguns hotéis estão sem foto oficial disponível.");
+        }
+        setHotelbedsResult(hotels);
+        setHotelsCatalog((previous) => {
+          const matches = new Set(hotels.map((hotel) => hotel.id));
+          return [...hotels, ...previous.filter((hotel) => !matches.has(hotel.id))];
+        });
       } catch (err) {
-        console.warn("[Hotelbeds] Erro silencioso:", err);
+        if (!signal.aborted) setHotelbedsError(err instanceof Error ? err.message : "Não foi possível concluir a consulta.");
       } finally {
-        setIsHotelbedsLoading(false);
+        if (!signal.aborted) {
+          setIsLoadingPhotos(false);
+          setIsHotelbedsLoading(false);
+        }
       }
     },
-    [selectedCityId, adultsCount, childrenCount]
+    [selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount, infantsCount]
   );
 
-  // Sincroniza tarifas com a Hotelbeds automaticamente ao abrir a página
-  useEffect(() => {
-    fetchLiveHotelbedsHotels("RIO");
-  }, [fetchLiveHotelbedsHotels]);
+  useEffect(() => () => hotelbedsRequest.current?.abort(), []);
 
   const handleSelectBlackFridayDeal = useCallback(
     (cityId: string, cityName: string) => {
@@ -908,200 +784,66 @@ export default function HospedeClubApp() {
     return s.replace(/\s+/g, " ").trim();
   };
 
-  const STATE_FULL_NAMES: Record<string, string> = {
-    RJ: "rio de janeiro rj sudeste sao conrado copacabana ipanema leblon barra da tijuca buzios angra dos reis estado do rio de janeiro estado de rj",
-    AL: "alagoas al nordeste maceio maragogi sao miguel dos milagres praia de antunes estado de alagoas",
-    PE: "pernambuco pe nordeste recife porto de galinhas carneiros muro alto estado de pernambuco",
-    BA: "bahia ba nordeste salvador trancoso praia do forte arraial d ajuda espelho estado da bahia",
-    "CE / RN": "ceara rn ce rio grande do norte fortaleza natal jericoacoara pipa nordeste",
-    RS: "rio grande do sul rs serra gaucha gramado canela bento goncalves vale dos vinhedos sul estado do rio grande do sul",
-    "SP / MG": "sao paulo sp minas gerais mg campos do jordao monte verde mantiqueira sudeste",
-    SP: "sao paulo sp litoral norte ilhabela guaruja olimpia sudeste estado de sao paulo",
-    GO: "goias go centro oeste caldas novas rio quente pirenopolis estado de goias",
-    SC: "santa catarina sc sul florianopolis jurere balneario camboriu penha estado de santa catarina",
+  const matchesHotelSearch = (hotel: CuratedHotel, query: string) => {
+    const words = (cleanSearchQuery(query) || normalizeForSearch(query)).split(/\s+/).filter(Boolean);
+    const haystack = normalizeForSearch(`${hotel.name} ${hotel.cityName} ${hotel.neighborhood} ${hotel.primaryLandmarkDistance}`);
+    return words.every((word) => haystack.includes(word));
   };
 
-  const filteredHotels = useMemo(() => {
-    return hotelsCatalog.filter((h) => {
-      if (showFavoritesOnly && !favoriteIds.includes(h.id)) return false;
-      if (selectedClusterId !== "all" && h.clusterId !== selectedClusterId) return false;
-      if (accommodationTab !== "all" && h.accommodationType !== accommodationTab) return false;
-      if (searchQuery.trim() !== "") {
-        const rawQ = normalizeForSearch(searchQuery.trim());
-        const cleanQ = cleanSearchQuery(searchQuery.trim());
-        const stateExpanded = STATE_FULL_NAMES[h.stateCode] || "";
-        const haystack = normalizeForSearch(
-          `${h.name} ${h.cityName} ${h.stateCode} ${h.neighborhood} ${h.primaryLandmarkDistance} ${stateExpanded} estado de ${h.cityName} estado do ${h.cityName}`
-        );
+  const filteredHotels = showFavoritesOnly
+    ? hotelsCatalog.filter((hotel) => favoriteIds.includes(hotel.id) && hotel.omnibeesChannelCode.startsWith("HB-"))
+    : hotelbedsResult.filter((hotel) => matchesHotelSearch(hotel, hotelSearchFilter));
 
-        const matchesRaw = haystack.includes(rawQ);
-        const matchesClean = cleanQ !== "" && haystack.includes(cleanQ);
-        const words = (cleanQ || rawQ).split(" ").filter((w) => w.length >= 2);
-        const wordsMatch = words.length > 0 && words.every((w) => haystack.includes(w));
-
-        if (!matchesRaw && !matchesClean && !wordsMatch) return false;
-      }
-      return true;
-    });
-  }, [hotelsCatalog, showFavoritesOnly, favoriteIds, selectedClusterId, accommodationTab, searchQuery]);
-
-  const activeDestinationCity = useMemo(
-    () => DESTINATION_CITIES.find((c) => c.id === selectedCityId) || DESTINATION_CITIES[0],
-    [selectedCityId]
-  );
-
-  // =========================================================================
-  // BUSCA INTELIGENTE DE CIDADE, ESTADO OU HOTEL NO HERO
-  // =========================================================================
+  const activeDestinationCity = DESTINATION_CITIES.find((city) => city.id === selectedCityId) || DESTINATION_CITIES[0];
   const heroSearchInputRef = useRef<HTMLInputElement | null>(null);
-  const [heroSearchText, setHeroSearchText] = useState<string>("");
-  const [hotelBarSearchText, setHotelBarSearchText] = useState<string>("");
+  const [heroSearchText, setHeroSearchText] = useState("");
+  const [hotelBarSearchText, setHotelBarSearchText] = useState("");
+
+  const executeHotelbedsSearch = (rawQuery: string) => {
+    const query = cleanSearchQuery(rawQuery);
+    const place = [...HOTELBEDS_PLACES].sort((a, b) => b[0].length - a[0].length)
+      .find(([name]) => query === name || ` ${query} `.includes(` ${name} `));
+    const collection = DESTINATION_CITIES.find((city) =>
+      [city.name, city.shortName, city.stateName, city.stateCode].some((name) => name && normalizeForSearch(name) === query)
+    );
+    const cityId = place?.[2] || collection?.id || selectedCityId;
+    const destination = place?.[1] || CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
+    // Some provider destinations cover several cities. Keep the city filter in those cases.
+    const exactDestinationNames = new Set(["rio", "rio de janeiro", "buzios", "angra dos reis", "maceio",
+      "porto de galinhas", "recife", "gramado", "campos do jordao", "monte verde", "sao paulo",
+      "olimpia", "ilhabela", "caldas novas", "goiania", "brasilia", "florianopolis", "balneario camboriu",
+      "penha", "curitiba", "fortaleza", "jericoacoara", "natal", "pipa", "porto alegre", "belo horizonte"]);
+    const hotelQuery = (collection && !place) || (place && query === place[0] && exactDestinationNames.has(query))
+      ? "" : rawQuery;
+    setSelectedCityId(cityId);
+    setShowFavoritesOnly(false);
+    setActiveScreen("home");
+    setSearchQuery(rawQuery || activeDestinationCity.shortName);
+    setHotelSearchFilter(hotelQuery);
+    const rioNeighborhood = /^(copacabana|ipanema|leblon|barra da tijuca|sao conrado|botafogo|centro do rio)$/.test(query);
+    fetchLiveHotelbedsHotels(rioNeighborhood ? "RIO" : destination, rioNeighborhood ? "rio-de-janeiro" : cityId,
+      undefined, undefined, undefined, undefined, !place && !collection && !rioNeighborhood ? query : undefined);
+    requestAnimationFrame(() => document.getElementById("hero-live-search-results")?.scrollIntoView({ behavior: "smooth" }));
+  };
 
   const handleExecuteHeroSearch = () => {
-    const rawQuery = heroSearchText.trim();
-    if (!rawQuery) {
-      handleOpenDestination(selectedCityId);
-      return;
-    }
-
-    const q = normalizeForSearch(rawQuery);
-    const cleanQ = cleanSearchQuery(rawQuery);
-
-    // 1. PRIMEIRO: Verifica se corresponde a um destino, cidade ou estado (ex: "Rio de Janeiro", "estado do rio de janeiro", "Gramado")
-    const matchedCity = DESTINATION_CITIES.find((city) => {
-      const stateExpanded = STATE_FULL_NAMES[city.stateCode] || "";
-      const haystack = normalizeForSearch(
-        `${city.name} ${city.shortName} ${city.stateCode} ${city.stateName} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded} estado de ${city.stateName} estado do ${city.stateName}`
-      );
-      return (
-        haystack.includes(q) ||
-        (cleanQ !== "" && haystack.includes(cleanQ)) ||
-        (cleanQ !== "" && cleanQ.split(" ").filter((w) => w.length >= 2).every((w) => haystack.includes(w)))
-      );
-    });
-
-    if (matchedCity) {
-      handleOpenDestination(matchedCity.id);
-      return;
-    }
-
-    // 1.1 Mapeamento inteligente para capitais e polos turísticos nacionais
-    for (const [key, mapping] of Object.entries(DESTINATION_ALIASES)) {
-      if (q.includes(key) || (cleanQ !== "" && cleanQ.includes(key))) {
-        setSelectedCityId(mapping.cityId);
-        setActiveScreen("destination");
-        fetchLiveHotelbedsHotels(mapping.hbCode, mapping.cityId, checkInDate, checkOutDate);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        return;
-      }
-    }
-
-    // 2. SEGUNDO: Verifica se corresponde a um hotel específico do catálogo pelo nome
-    const matchedHotel = hotelsCatalog.find((hotel) => {
-      const hotelNameNorm = normalizeForSearch(hotel.name);
-      return hotelNameNorm.includes(q) || (cleanQ !== "" && hotelNameNorm.includes(cleanQ));
-    });
-
-    if (matchedHotel) {
-      handleOpenHotelDetail(matchedHotel);
-      return;
-    }
-
-    // 3. TERCEIRO: Se houver hotéis filtrados correspondentes, abre o destino do primeiro hotel
-    if (filteredHotels.length > 0) {
-      const firstHotel = filteredHotels[0];
-      handleOpenDestination(firstHotel.cityId || selectedCityId);
-      return;
-    }
-
-    // 4. Fallback: abre o destino selecionado atualmente
-    handleOpenDestination(selectedCityId);
+    if (!heroSearchText.trim()) return handleOpenDestination(selectedCityId);
+    executeHotelbedsSearch(heroSearchText.trim());
   };
 
-  // BUSCA LIVRE & PESQUISA DE TARIFAS NA TELA DO HOTEL
   const handleExecuteHotelBarSearch = (overrideQuery?: string) => {
-    const rawQuery = (overrideQuery !== undefined ? overrideQuery : hotelBarSearchText).trim();
-
-    // Se o campo estiver em branco, apenas recalcula as tarifas do hotel e destino atual com as datas/hóspedes selecionados
+    const rawQuery = (overrideQuery ?? hotelBarSearchText).trim();
     if (!rawQuery) {
-      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-      fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+      fetchLiveHotelbedsHotels(activeHotelbedsDestination.current, selectedCityId, undefined, undefined, undefined, undefined, undefined, selectedHotel.hotelbedsCode);
       return;
     }
-
-    const q = normalizeForSearch(rawQuery);
-    const cleanQ = cleanSearchQuery(rawQuery);
-
-    // 1. PRIMEIRO: Verifica se corresponde a um destino ou cidade cadastrada
-    const matchedCity = DESTINATION_CITIES.find((city) => {
-      const stateExpanded = STATE_FULL_NAMES[city.stateCode] || "";
-      const haystack = normalizeForSearch(
-        `${city.name} ${city.shortName} ${city.stateCode} ${city.stateName} ${city.tagline} ${city.subAreas.join(" ")} ${stateExpanded} estado de ${city.stateName} estado do ${city.stateName}`
-      );
-      return (
-        haystack.includes(q) ||
-        (cleanQ !== "" && haystack.includes(cleanQ)) ||
-        (cleanQ !== "" && cleanQ.split(" ").filter((w) => w.length >= 2).every((w) => haystack.includes(w)))
-      );
-    });
-
-    if (matchedCity) {
-      setSelectedCityId(matchedCity.id);
-      setHeroSearchText(rawQuery);
-      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[matchedCity.id] || "RIO";
-      fetchLiveHotelbedsHotels(hbDest, matchedCity.id, checkInDate, checkOutDate, adultsCount, childrenCount);
-      setActiveScreen("destination");
-      window.scrollTo({ top: 300, behavior: "smooth" });
-      return;
-    }
-
-    // 1.1 Mapeamento inteligente para capitais e polos turísticos nacionais
-    for (const [key, mapping] of Object.entries(DESTINATION_ALIASES)) {
-      if (q.includes(key) || (cleanQ !== "" && cleanQ.includes(key))) {
-        setSelectedCityId(mapping.cityId);
-        setHeroSearchText(rawQuery);
-        setActiveScreen("destination");
-        fetchLiveHotelbedsHotels(mapping.hbCode, mapping.cityId, checkInDate, checkOutDate, adultsCount, childrenCount);
-        window.scrollTo({ top: 300, behavior: "smooth" });
-        return;
-      }
-    }
-
-    // 2. SEGUNDO: Verifica se corresponde a um hotel específico do catálogo pelo nome
-    const matchedHotel = hotelsCatalog.find((hotel) => {
-      const hotelNameNorm = normalizeForSearch(hotel.name);
-      return hotelNameNorm.includes(q) || (cleanQ !== "" && hotelNameNorm.includes(cleanQ));
-    });
-
-    if (matchedHotel) {
-      if (matchedHotel.id === selectedHotel.id) {
-        // Se for o mesmo hotel, recalcula suas tarifas com as novas datas/hóspedes
-        const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-        fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
-      } else {
-        handleOpenHotelDetail(matchedHotel);
-      }
-      return;
-    }
-
-    // 3. Fallback: Se não encontrou destino específico, consulta na Hotelbeds para a cidade ativa
-    const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-    fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount);
+    setHeroSearchText(rawQuery);
+    executeHotelbedsSearch(rawQuery);
   };
 
-  const destinationHotels = useMemo(() => {
-    const byCity = hotelsCatalog.filter((h) => {
-      if (h.cityId === activeDestinationCity.id) return true;
-      if (h.stateCode === activeDestinationCity.stateCode) return true;
-      return false;
-    });
-    const baseList = byCity.length > 0 ? byCity : hotelsCatalog;
-    if (selectedLandmarkFilter === "all") return baseList;
-    const matching = baseList.filter((h) =>
-      h.landmarkDistances.some((d) => d.landmarkId === selectedLandmarkFilter)
-    );
-    return matching.length > 0 ? matching : baseList;
-  }, [hotelsCatalog, activeDestinationCity, selectedLandmarkFilter]);
+  const destinationHotels = hotelbedsResult;
+  const canBookSelectedHotel = !isHotelbedsLoading && hotelbedsResult.some((hotel) => hotel.id === selectedHotelId);
+
 
   const handleUpdateHotelFromExtranet = (
     hotelId: string,
@@ -1175,8 +917,11 @@ export default function HospedeClubApp() {
   };
 
   const handleOpenHotelDetail = (hotel: CuratedHotel) => {
+    if (!hotelbedsResult.some((entry) => entry.id === hotel.id) && hotel.hotelbedsCode) {
+      fetchLiveHotelbedsHotels(activeHotelbedsDestination.current, hotel.cityId, undefined, undefined, undefined, undefined, undefined, hotel.hotelbedsCode);
+    }
     setSelectedHotelId(hotel.id);
-    setSelectedRoomId(hotel.rooms[0].id);
+    setSelectedRoomId(hotel.rooms[0]?.id || "");
     setActivePhotoIndex(0);
     setBookingConfirmedVoucher(null);
     setHotelBarSearchText("");
@@ -1193,6 +938,7 @@ export default function HospedeClubApp() {
 
   const handleDirectCheckoutProceed = (hotel: CuratedHotel, room?: RoomCategory) => {
     const chosenRoom = room || hotel.rooms[0];
+    if (!chosenRoom) return;
     setSelectedHotelId(hotel.id);
     setSelectedRoomId(chosenRoom.id);
     setBookingConfirmedVoucher(null);
@@ -1224,10 +970,11 @@ export default function HospedeClubApp() {
   };
 
   const handleDirectCheckout = (hotel: CuratedHotel, room?: RoomCategory) => {
-    if (hotel.stopSell || hotel.omnibeesAvailableRooms <= 0) {
+    if (isHotelbedsLoading || !hotelbedsResult.some((entry) => entry.id === hotel.id) || hotel.stopSell || hotel.omnibeesAvailableRooms <= 0) {
       return;
     }
     const chosenRoom = room || hotel.rooms[0];
+    if (!chosenRoom) return;
 
     // Exige login/cadastro para concluir a reserva
     if (!loggedCustomer) {
@@ -1474,7 +1221,7 @@ export default function HospedeClubApp() {
 
   const activeScene = HERO_SCENES[heroSceneIndex];
   const hotelAllPhotos = useMemo(() => {
-    const set = new Set([selectedHotel.heroImage, ...selectedHotel.gallery]);
+    const set = new Set([selectedHotel.heroImage, ...selectedHotel.gallery].filter(Boolean));
     return Array.from(set);
   }, [selectedHotel]);
 
@@ -1778,7 +1525,6 @@ export default function HospedeClubApp() {
                         value={heroSearchText}
                         onChange={(e) => {
                           setHeroSearchText(e.target.value);
-                          setSearchQuery(e.target.value);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
@@ -2016,7 +1762,7 @@ export default function HospedeClubApp() {
                   <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex items-center gap-2 text-xs">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#B8863B] animate-ping shrink-0" />
                     <span className="text-[#9A6D28] font-semibold animate-pulse">
-                      Buscando todos os hotéis da região em tempo real...
+                      {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
                     </span>
                   </div>
                 )}
@@ -2121,7 +1867,7 @@ export default function HospedeClubApp() {
                       Resultados da Pesquisa
                     </span>
                     <h2 className="font-editorial text-2xl sm:text-4xl font-normal text-[#182026]">
-                      {filteredHotels.length} {filteredHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"} para &ldquo;{searchQuery}&rdquo;
+                      {isHotelbedsLoading ? "Buscando hotéis" : hotelbedsError ? "Consulta indisponível" : `${filteredHotels.length} ${filteredHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"}`} para &ldquo;{searchQuery}&rdquo;
                     </h2>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2153,7 +1899,7 @@ export default function HospedeClubApp() {
                       <div>
                         <div className="flex items-center gap-2">
                           <h4 className="text-sm font-semibold text-[#182026]">
-                            Buscando todos os hotéis da região em tempo real...
+                            {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
                           </h4>
                           <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
                             Pesquisando
@@ -2171,7 +1917,10 @@ export default function HospedeClubApp() {
                   </div>
                 )}
 
-                {filteredHotels.length === 0 ? (
+                {hotelbedsNotice && <p role="status" className="mb-4 text-sm text-[#9A6D28]">{hotelbedsNotice}</p>}
+                {hotelbedsError ? (
+                  <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{hotelbedsError}</p>
+                ) : filteredHotels.length === 0 ? (
                   isHotelbedsLoading ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {[1, 2, 3].map((s) => (
@@ -2197,7 +1946,7 @@ export default function HospedeClubApp() {
                   ) : (
                     <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
                       <p className="text-[#182026] font-medium text-sm">
-                        Nenhuma propriedade encontrada para &ldquo;{searchQuery}&rdquo;.
+                        Nenhum hotel disponível para &ldquo;{searchQuery}&rdquo; nas datas selecionadas.
                       </p>
                       <p className="text-xs text-[#5C646B]">
                         Tente pesquisar por &ldquo;Rio de Janeiro&rdquo;, &ldquo;Copacabana&rdquo;, &ldquo;São Conrado&rdquo;, &ldquo;Gramado&rdquo; ou &ldquo;Maceió&rdquo;.
@@ -2443,7 +2192,7 @@ export default function HospedeClubApp() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-semibold text-[#182026]">
-                        Buscando todos os hotéis da região em tempo real...
+                        {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
                       </h4>
                       <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
                         Sincronizando
@@ -2460,6 +2209,10 @@ export default function HospedeClubApp() {
                 </div>
               </div>
             )}
+
+            {hotelbedsNotice && <p role="status" className="mb-4 text-sm text-[#9A6D28]">{hotelbedsNotice}</p>}
+            {hotelbedsError ? <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{hotelbedsError}</p> :
+              !isHotelbedsLoading && !destinationHotels.length && <p className="mb-4 text-sm">Nenhum hotel disponível para este destino nas datas selecionadas.</p>}
 
             {/* SKELETON CARDS SE AINDA NÃO HOUVER HOTÉIS CARREGADOS */}
             {isHotelbedsLoading && destinationHotels.length === 0 && (
@@ -2514,7 +2267,8 @@ export default function HospedeClubApp() {
                         </h3>
                         <p className="text-xs text-[#5C646B] mt-1">{hotel.subtitle}</p>
 
-                        <div className="mt-4 p-3 sm:p-3.5 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] space-y-2">
+                        <div className="mt-4 text-xs text-[#5C646B]">{hotel.primaryLandmarkDistance}</div>
+                        <div className="empty:hidden mt-4 p-3 sm:p-3.5 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] space-y-2">
                           {hotel.landmarkDistances.map((dist, idx) => {
                             const isHighlighted =
                               selectedLandmarkFilter !== "all" &&
@@ -2690,9 +2444,9 @@ export default function HospedeClubApp() {
                       onChange={(e) => {
                         const newIn = e.target.value;
                         handleCheckInChange(newIn);
-                        const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
+                        const hbDest = activeHotelbedsDestination.current;
                         const outDate = (!checkOutDate || newIn >= checkOutDate) ? addDaysToString(newIn, nightsCount > 0 ? nightsCount : 1) : checkOutDate;
-                        fetchLiveHotelbedsHotels(hbDest, selectedCityId, newIn, outDate, adultsCount, childrenCount);
+                        fetchLiveHotelbedsHotels(hbDest, selectedCityId, newIn, outDate, adultsCount, childrenCount, undefined, selectedHotel.hotelbedsCode);
                       }}
                       className="w-full bg-[#FAF7F2] text-[#182026] text-xs font-medium px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] cursor-pointer"
                     />
@@ -2708,8 +2462,8 @@ export default function HospedeClubApp() {
                       onChange={(e) => {
                         const newOut = e.target.value;
                         handleCheckOutChange(newOut);
-                        const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-                        fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, newOut, adultsCount, childrenCount);
+                        const hbDest = activeHotelbedsDestination.current;
+                        fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, newOut, adultsCount, childrenCount, undefined, selectedHotel.hotelbedsCode);
                       }}
                       className="w-full bg-[#FAF7F2] text-[#182026] text-xs font-medium px-2.5 py-2 rounded-xl border border-[#E2D9C8] focus:outline-none focus:border-[#B8863B] cursor-pointer"
                     />
@@ -2767,8 +2521,8 @@ export default function HospedeClubApp() {
                             onClick={() => {
                               const nextA = Math.max(1, adultsCount - 1);
                               setAdultsCount(nextA);
-                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, nextA, childrenCount);
+                              const hbDest = activeHotelbedsDestination.current;
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, nextA, childrenCount, undefined, selectedHotel.hotelbedsCode);
                             }}
                             className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
                           >
@@ -2781,8 +2535,8 @@ export default function HospedeClubApp() {
                             onClick={() => {
                               const nextA = Math.min(8, adultsCount + 1);
                               setAdultsCount(nextA);
-                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, nextA, childrenCount);
+                              const hbDest = activeHotelbedsDestination.current;
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, nextA, childrenCount, undefined, selectedHotel.hotelbedsCode);
                             }}
                             className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
                           >
@@ -2804,8 +2558,8 @@ export default function HospedeClubApp() {
                             onClick={() => {
                               const nextC = Math.max(0, childrenCount - 1);
                               setChildrenCount(nextC);
-                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC);
+                              const hbDest = activeHotelbedsDestination.current;
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC, undefined, selectedHotel.hotelbedsCode);
                             }}
                             className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
                           >
@@ -2818,8 +2572,8 @@ export default function HospedeClubApp() {
                             onClick={() => {
                               const nextC = Math.min(4, childrenCount + 1);
                               setChildrenCount(nextC);
-                              const hbDest = CITY_TO_HOTELBEDS_DESTINATION[selectedCityId] || "RIO";
-                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC);
+                              const hbDest = activeHotelbedsDestination.current;
+                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC, undefined, selectedHotel.hotelbedsCode);
                             }}
                             className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
                           >
@@ -2879,6 +2633,7 @@ export default function HospedeClubApp() {
                     )
                   }
                   className="pointer-events-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
+                  disabled={hotelAllPhotos.length < 2}
                   aria-label="Anterior"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -2888,6 +2643,7 @@ export default function HospedeClubApp() {
                     setActivePhotoIndex((prev) => (prev + 1) % hotelAllPhotos.length)
                   }
                   className="pointer-events-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
+                  disabled={hotelAllPhotos.length < 2}
                   aria-label="Próxima"
                 >
                   <ChevronRight className="w-5 h-5" />
@@ -2939,7 +2695,12 @@ export default function HospedeClubApp() {
               Suítes & Condições de Membro
             </h2>
 
-            {selectedHotel.rooms.map((room) => {
+            {isHotelbedsLoading && <p role="status">{isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando quartos e tarifas na Hotelbeds..."}</p>}
+            {hotelbedsError && <p role="alert" className="text-[#B83B2B]">{hotelbedsError}</p>}
+            {hotelbedsNotice && <p role="status" className="text-[#9A6D28]">{hotelbedsNotice}</p>}
+            {!isHotelbedsLoading && !hotelbedsError && (!canBookSelectedHotel || !selectedHotel.rooms.length) &&
+              <p>Nenhum quarto disponível para estas datas.</p>}
+            {canBookSelectedHotel && selectedHotel.rooms.map((room) => {
               const cancelInfo = getRoomCancellationInfo(room);
               const roomPricing = calculateVellutoPricing(
                 room.netRate,
@@ -2950,7 +2711,7 @@ export default function HospedeClubApp() {
               );
               const card12x = roomPricing.creditCard.installments[11];
               const roomSoldOut = room.omnibeesAvailableCount <= 0 || Boolean(selectedHotel.stopSell);
-              const roomPhoto = room.heroImage || selectedHotel.heroImage;
+              const roomPhoto = room.heroImage || "";
 
               return (
                 <div
@@ -2967,7 +2728,7 @@ export default function HospedeClubApp() {
                       className="w-full h-full object-cover transition-transform duration-500 group-hover/rm:scale-105"
                     />
                     <div className="absolute top-2 left-2 z-20 bg-[#182026]/85 backdrop-blur-xs px-2 py-0.5 rounded-md text-[10px] text-white font-medium">
-                      {room.sizeM2} m²
+                      {room.sizeM2 > 0 ? `${room.sizeM2} m²` : null}
                     </div>
                   </div>
 
@@ -2980,7 +2741,7 @@ export default function HospedeClubApp() {
                       {room.name}
                     </h3>
                     <p className="text-xs text-[#5C646B] mt-1">
-                      {room.bedConfig} • {room.boardBasis}
+                      {[room.bedConfig, room.boardBasis].filter(Boolean).join(" • ")}
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-2.5">
                       {room.highlights.map((h, i) => (

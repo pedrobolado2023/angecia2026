@@ -43,6 +43,7 @@ export async function fetchLiveExchangeRates(): Promise<Record<string, number>> 
   try {
     const res = await fetch("https://economia.awesomeapi.com.br/last/EUR-BRL,USD-BRL,GBP-BRL", {
       next: { revalidate: 1800 },
+      signal: AbortSignal.timeout(5000),
     });
 
     if (res.ok) {

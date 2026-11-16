@@ -12,6 +12,7 @@ export interface HotelbedsOccupancy {
   rooms: number;
   adults: number;
   children?: number;
+  paxes?: { type: "CH"; age: number }[];
 }
 
 export interface HotelbedsStay {
@@ -136,6 +137,7 @@ export function translateHotelbedsRoomName(rawName: string): string {
 }
 
 export interface HotelbedsHotelResult {
+  city?: string;
   code: number | string;
   name: string;
   categoryCode?: string;
@@ -170,6 +172,7 @@ export interface HotelbedsAvailabilityResponse {
   total: number;
   hotels: HotelbedsHotelResult[];
   rawError?: string;
+  contentIncomplete?: boolean;
 }
 
 export interface HotelbedsStatusResponse {
@@ -313,6 +316,78 @@ const contentCache = new Map<
   { timestamp: number; data: HotelbedsContentData }
 >();
 const CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+let nextContentRequest = 0;
+
+async function fetchContentPage(url: string, cfg: HotelbedsConfig) {
+  for (let attempt = 0; ; attempt++) {
+    const now = Date.now();
+    const start = Math.max(now, nextContentRequest);
+    nextContentRequest = start + 400;
+    if (start > now) await new Promise((resolve) => setTimeout(resolve, start - now));
+    const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
+    const response = await fetch(url, {
+      headers: { "Api-key": cfg.apiKey, "X-Signature": signature, Accept: "application/json" },
+      signal: AbortSignal.timeout(20000),
+      cache: "no-store",
+    });
+    if (response.status !== 429 || attempt > 0) return response;
+    const retryAfter = response.headers.get("retry-after");
+    const seconds = retryAfter ? Number(retryAfter) : 1.5;
+    if (!Number.isFinite(seconds) || seconds > 5) return response;
+    await response.body?.cancel();
+    nextContentRequest = Math.max(nextContentRequest, Date.now() + Math.max(seconds, 1) * 1000);
+  }
+}
+
+type CatalogEntry = { code: number; name?: { content?: string }; city?: { content?: string } };
+let brazilCatalog: { expires: number; entries: CatalogEntry[] } | undefined;
+let pendingBrazilCatalog: Promise<CatalogEntry[]> | undefined;
+
+const normalizeCatalogText = (value = "") =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+export async function findBrazilHotelbedsCodes(query: string): Promise<number[]> {
+  if (!brazilCatalog || brazilCatalog.expires <= Date.now()) {
+    if (!pendingBrazilCatalog) {
+      pendingBrazilCatalog = (async () => {
+        const cfg = getHotelbedsConfig();
+        if (!cfg.apiKey || !cfg.secret) throw new Error("Credenciais Hotelbeds não configuradas");
+        const size = 1000;
+        const getPage = async (from: number) => {
+          const endpoint = `${cfg.baseUrl}/hotel-content-api/1.0/hotels?countryCode=BR&language=POR&fields=name,city&from=${from}&to=${from + size - 1}`;
+          const response = await fetchContentPage(endpoint, cfg);
+          if (!response.ok) throw new Error(`Catálogo Hotelbeds: HTTP ${response.status}`);
+          const page = await response.json();
+          if (!Number.isSafeInteger(page.total) || !Array.isArray(page.hotels)) {
+            throw new Error("Resposta inválida do catálogo Hotelbeds");
+          }
+          return page as { total: number; hotels: CatalogEntry[] };
+        };
+        const first = await getPage(1);
+        const entries = [...first.hotels];
+        for (let from = size + 1; from <= first.total; from += size * 2) {
+          const pages = await Promise.all(
+            [from, from + size].filter((offset) => offset <= first.total).map(getPage)
+          );
+          entries.push(...pages.flatMap((page) => page.hotels));
+        }
+        if (new Set(entries.map((hotel) => hotel.code)).size < first.total) {
+          throw new Error("O catálogo Hotelbeds retornou uma lista incompleta");
+        }
+        brazilCatalog = { expires: Date.now() + CONTENT_CACHE_TTL_MS, entries };
+        return entries;
+      })().finally(() => { pendingBrazilCatalog = undefined; });
+    }
+  }
+  const entries = brazilCatalog && brazilCatalog.expires > Date.now()
+    ? brazilCatalog.entries
+    : await pendingBrazilCatalog!;
+  const words = normalizeCatalogText(query).trim().split(/\s+/).filter(Boolean);
+  return [...new Set(entries.filter((entry) => {
+    const text = normalizeCatalogText(`${entry.name?.content || ""} ${entry.city?.content || ""}`);
+    return words.length > 0 && words.every((word) => text.includes(word));
+  }).map((entry) => entry.code))];
+}
 
 /**
  * Consulta fotos reais (CDN GIATA), descrições em português e facilidades na Hotelbeds Content API
@@ -330,7 +405,7 @@ export async function fetchHotelbedsContent(
   const now = Date.now();
 
   for (const c of codes) {
-    const cached = contentCache.get(c);
+    const cached = contentCache.get(String(c));
     if (cached && now - cached.timestamp < CONTENT_CACHE_TTL_MS) {
       result[c] = cached.data;
     } else {
@@ -351,24 +426,16 @@ export async function fetchHotelbedsContent(
 
   const contentBaseUrl = cfg.baseUrl.replace(/\/hotel-api\/.*$/, "");
 
-  await Promise.all(
-    chunks.map(async (chunk) => {
+  for (let offset = 0; offset < chunks.length; offset += 2) {
+    await Promise.all(chunks.slice(offset, offset + 2).map(async (chunk) => {
       try {
-        const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
         const codesStr = chunk.join(",");
-        const url = `${contentBaseUrl}/hotel-content-api/1.0/hotels?codes=${codesStr}&language=POR&fields=all`;
+        const url = `${contentBaseUrl}/hotel-content-api/1.0/hotels?codes=${codesStr}&language=POR&fields=all&from=1&to=${chunk.length}`;
 
-        const res = await fetch(url, {
-          method: "GET",
-          headers: {
-            "Api-key": cfg.apiKey,
-            "X-Signature": signature,
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        });
+        const res = await fetchContentPage(url, cfg);
 
-        if (res.ok) {
+        if (!res.ok) throw new Error(`Content API respondeu HTTP ${res.status}`);
+        {
           const data = await res.json();
           const hotels = data.hotels || (data.hotel ? [data.hotel] : []);
           for (const h of hotels) {
@@ -383,8 +450,9 @@ export async function fetchHotelbedsContent(
             for (const img of rawImages) {
               if (!img.path) continue;
               // Limpa timestamps duplicados após '?' que alguns registros trazem
-              const cleanPath = String(img.path).split("?")[0];
-              const fullUrl = `https://photos.hotelbeds.com/giata/bigger/${cleanPath}`;
+              const cleanPath = String(img.path).split("?")[0].trim();
+              if (!/^[\w/-]+\.[a-z0-9]+$/i.test(cleanPath)) continue;
+              const fullUrl = `https://photos.hotelbeds.com/giata/${cleanPath}`;
               allImages.push(fullUrl);
 
               if (img.imageTypeCode === "GEN") {
@@ -437,15 +505,15 @@ export async function fetchHotelbedsContent(
               habImages,
             };
 
-            contentCache.set(h.code, { timestamp: now, data: contentItem });
+            contentCache.set(String(h.code), { timestamp: now, data: contentItem });
             result[h.code] = contentItem;
           }
         }
       } catch (err) {
         console.warn("[Hotelbeds Content API] Falha no chunk:", err);
       }
-    })
-  );
+    }));
+  }
 
   return result;
 }
@@ -463,10 +531,18 @@ export async function searchHotelbedsAvailability(params: {
   const cfg = getHotelbedsConfig();
   const occupancies = params.occupancies || [{ rooms: 1, adults: 2, children: 0 }];
 
-  // Fallback quando as chaves ainda não foram preenchidas no .env
-  if (!cfg.apiKey || !cfg.secret) {
-    return getSimulatedHotelbedsAvailability(params.checkIn, params.checkOut, params.destinationCode);
-  }
+  const failure = (rawError: string): HotelbedsAvailabilityResponse => ({
+    ok: false,
+    isSimulation: false,
+    message: "Não foi possível consultar a Hotelbeds. Tente novamente em instantes.",
+    checkIn: params.checkIn,
+    checkOut: params.checkOut,
+    total: 0,
+    hotels: [],
+    rawError,
+  });
+
+  if (!cfg.apiKey || !cfg.secret) return failure("Credenciais Hotelbeds não configuradas");
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
@@ -505,33 +581,23 @@ export async function searchHotelbedsAvailability(params: {
       },
       body: JSON.stringify(requestPayload),
       cache: "no-store",
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!res.ok) {
       const errText = await res.text();
       console.warn(`[Hotelbeds] Erro na busca de disponibilidade (${res.status}):`, errText);
-      // Retorna fallback inteligente de contingência para não deixar o usuário sem resposta
-      const fallback = getSimulatedHotelbedsAvailability(params.checkIn, params.checkOut, params.destinationCode);
-      fallback.rawError = `Hotelbeds retornou HTTP ${res.status}: ${errText}`;
-      return fallback;
+      return failure(`Hotelbeds retornou HTTP ${res.status}`);
     }
 
     const data = await res.json();
     const hotelsList = data.hotels?.hotels || [];
 
-    // Busca cotações de câmbio ao vivo (Banco Central / AwesomeAPI) para converter EUR/USD -> BRL
-    const liveRates = await fetchLiveExchangeRates();
-
-    // Hidrata em lote as fotos oficiais do CDN GIATA, descrições e comodidades
-    const codes = hotelsList.map((h: any) => h.code);
-    let contentMap: Record<string | number, HotelbedsContentData> = {};
-    try {
-      if (codes.length > 0) {
-        contentMap = await fetchHotelbedsContent(codes);
-      }
-    } catch (e) {
-      console.warn("[Hotelbeds] Falha ao hidratar Content API:", e);
-    }
+    const codes = [...new Set<number>(hotelsList.map((h: any) => h.code))];
+    const [liveRates, contentMap] = await Promise.all([
+      fetchLiveExchangeRates(),
+      fetchHotelbedsContent(codes),
+    ]);
 
     const mappedHotels: HotelbedsHotelResult[] = hotelsList.map((h: any) => {
       const content = contentMap[h.code];
@@ -565,31 +631,11 @@ export async function searchHotelbedsAvailability(params: {
         description: content?.description,
         address: content?.address,
         postalCode: content?.postalCode,
+        city: content?.city,
         facilities: content?.facilities || [],
-        rooms: (h.rooms || []).map((r: any, rIdx: number) => {
-          const rmImgs = content?.roomImages?.[r.code] || [];
-          const roomType = (r.code || "").split(".")[0]?.toUpperCase() || "";
-          const typeImgs = content?.roomTypeImages?.[roomType] || [];
-          const habImgs = content?.habImages || [];
-          const galleryImgs = content?.gallery || [];
-
-          // Cascata de fotos oficiais da propriedade:
-          // 1. Fotos do roomCode exato
-          // 2. Fotos do tipo de quarto (DBL, SUI, TWN, STD, etc.)
-          // 3. Fotos reais de quartos do hotel (HAB)
-          // 4. Fotos da galeria da propriedade
-          const resolvedRoomImages =
-            rmImgs.length > 0
-              ? rmImgs
-              : typeImgs.length > 0
-              ? typeImgs
-              : habImgs.length > 0
-              ? [habImgs[rIdx % habImgs.length]]
-              : galleryImgs.length > 0
-              ? [galleryImgs[rIdx % galleryImgs.length]]
-              : [];
-
-          const roomHeroImage = resolvedRoomImages[0] || content?.heroImage;
+        rooms: (h.rooms || []).map((r: any) => {
+          const resolvedRoomImages = [...new Set(content?.roomImages?.[r.code] || [])];
+          const roomHeroImage = resolvedRoomImages[0];
 
           return {
             code: r.code,
@@ -633,15 +679,15 @@ export async function searchHotelbedsAvailability(params: {
       isSimulation: false,
       checkIn: data.hotels?.checkIn || params.checkIn,
       checkOut: data.hotels?.checkOut || params.checkOut,
-      total: data.hotels?.total || mappedHotels.length,
+      total: mappedHotels.length,
+      contentIncomplete: codes.some((code) => !contentMap[code]) ||
+        Number(data.hotels?.total || 0) > mappedHotels.length,
       hotels: mappedHotels,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
     console.error("[Hotelbeds] Exceção:", msg);
-    const fallback = getSimulatedHotelbedsAvailability(params.checkIn, params.checkOut, params.destinationCode);
-    fallback.rawError = msg;
-    return fallback;
+    return failure(msg);
   }
 }
 
@@ -943,584 +989,3 @@ export async function cancelHotelbedsBooking(
     };
   }
 }
-
-/**
- * Catálogo resiliente de contingência da Hotelbeds APItude com hotéis e fotos reais do CDN GIATA
- */
-function getSimulatedHotelbedsAvailability(
-  checkIn: string,
-  checkOut: string,
-  destinationCode?: string
-): HotelbedsAvailabilityResponse {
-  const allHotels: HotelbedsHotelResult[] = [
-    {
-      code: 493221,
-      name: "Hotel Nacional Rio de Janeiro",
-      categoryCode: "5EST",
-      categoryName: "5 STARS LUXURY",
-      destinationCode: "RIO",
-      destinationName: "Rio de Janeiro",
-      zoneCode: 1,
-      zoneName: "São Conrado",
-      latitude: "-22.9982",
-      longitude: "-43.2689",
-      minRate: 811.18,
-      maxRate: 1250.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_006.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_006.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_f_001.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_008.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
-      ],
-      description: "Localizado em São Conrado, de frente para o mar, o icônico Hotel Nacional é tombado pelo patrimônio histórico com arquitetura de Oscar Niemeyer e jardins de Burle Marx.",
-      address: "Av. Niemeyer, 769 - São Conrado, Rio de Janeiro",
-      facilities: ["Piscina ao ar livre", "Acesso direto à praia", "Spa e Centro de Bem-estar", "Wi-Fi cortesia"],
-      rooms: [
-        {
-          code: "DBL.ST",
-          name: "Quarto Duplo Standard",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_148_20251105_164053.jpg",
-          rates: [
-            {
-              rateKey: `HB-NACIONAL-${Date.now()}-STD`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 680.0,
-              sellingRate: 920.0,
-              allotted: 5,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-              cancellationPolicies: [
-                {
-                  amount: 0,
-                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-        {
-          code: "DBL.LX-1",
-          name: "Quarto Duplo Luxo Frente Mar",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
-          rates: [
-            {
-              rateKey: `HB-NACIONAL-${Date.now()}-01`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 811.18,
-              sellingRate: 1200.0,
-              allotted: 4,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-              cancellationPolicies: [
-                {
-                  amount: 0,
-                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-        {
-          code: "DBL.DX-OV",
-          name: "Quarto Duplo Deluxe Vista Mar",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_228_20260720_131739.png",
-          rates: [
-            {
-              rateKey: `HB-NACIONAL-${Date.now()}-DX`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 980.0,
-              sellingRate: 1450.0,
-              allotted: 3,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-              cancellationPolicies: [
-                {
-                  amount: 0,
-                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-        {
-          code: "JSU.ST",
-          name: "Suíte Júnior",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_126.jpg",
-          rates: [
-            {
-              rateKey: `HB-NACIONAL-${Date.now()}-JR`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 1250.0,
-              sellingRate: 1850.0,
-              allotted: 2,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-              cancellationPolicies: [
-                {
-                  amount: 0,
-                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-        {
-          code: "SUI.SU-VM",
-          name: "Suíte Master Vista Mar",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_199_20260226_171223.jpeg",
-          rates: [
-            {
-              rateKey: `HB-NACIONAL-${Date.now()}-MS`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 1780.0,
-              sellingRate: 2600.0,
-              allotted: 2,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-              cancellationPolicies: [
-                {
-                  amount: 0,
-                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-        {
-          code: "TWN.LX-2",
-          name: "Quarto Twin Luxo",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_140.jpg",
-          rates: [
-            {
-              rateKey: `HB-NACIONAL-${Date.now()}-TWN`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 850.0,
-              sellingRate: 1250.0,
-              allotted: 3,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-              cancellationPolicies: [
-                {
-                  amount: 0,
-                  from: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 47375,
-      name: "Comfort Suites Brasilia",
-      categoryCode: "4EST",
-      categoryName: "4 STARS",
-      destinationCode: "BSB",
-      destinationName: "Brasília",
-      zoneCode: 1,
-      zoneName: "Setor Hoteleiro Norte",
-      latitude: "-15.7887",
-      longitude: "-47.8894",
-      minRate: 332.0,
-      maxRate: 410.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_a_026_20260930_181522.png",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_a_026_20260930_181522.png",
-        "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_ro_208.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_ro_239.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_a_001.jpg",
-      ],
-      description: "Localizado no Setor Hoteleiro Norte, com fácil acesso ao Eixo Monumental e aos principais centros de convenções de Brasília.",
-      address: "SHN Quadra 04 Bloco D, Brasília",
-      facilities: ["Piscina", "Academia moderna", "Wi-Fi cortesia", "Restaurante executivo"],
-      rooms: [
-        {
-          code: "SUI.SU",
-          name: "Suíte Superior Queen",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_ro_208.jpg",
-          rates: [
-            {
-              rateKey: `HB-BSB-CS-${Date.now()}-SUI`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 332.0,
-              sellingRate: 410.0,
-              allotted: 3,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-        {
-          code: "TWN.LX",
-          name: "Quarto Twin Luxo",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_ro_239.jpg",
-          rates: [
-            {
-              rateKey: `HB-BSB-CS-${Date.now()}-TWN`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 350.0,
-              sellingRate: 435.0,
-              allotted: 4,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-        {
-          code: "DBL.LX",
-          name: "Quarto Duplo Luxo Queen",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/04/047375/047375a_hb_ro_208.jpg",
-          rates: [
-            {
-              rateKey: `HB-BSB-CS-${Date.now()}-DBL`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 375.0,
-              sellingRate: 460.0,
-              allotted: 2,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 124784,
-      name: "Royal Tulip Brasilia Alvorada",
-      categoryCode: "5EST",
-      categoryName: "5 STARS LUXURY",
-      destinationCode: "BSB",
-      destinationName: "Brasília",
-      zoneCode: 1,
-      zoneName: "Setor de Hotéis e Turismo Norte",
-      latitude: "-15.7833",
-      longitude: "-47.8300",
-      minRate: 590.0,
-      maxRate: 850.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/12/124784/124784a_hb_a_030.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/12/124784/124784a_hb_a_030.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/12/124784/124784a_hb_a_001.jpg",
-      ],
-      description: "Resort urbano de arquitetura icônica de Ruy Ohtake às margens do Lago Paranoá, vizinho ao Palácio da Alvorada.",
-      address: "SHTN Trecho 01 Conjunto 01B, Bloco C, Brasília",
-      facilities: ["Piscinas com vista lago", "Pier privativo", "Spa de alto padrão", "Gastronomia internacional"],
-      rooms: [
-        {
-          code: "DBL.DX",
-          name: "Quarto Duplo Deluxe Lago",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/12/124784/124784a_hb_a_030.jpg",
-          rates: [
-            {
-              rateKey: `HB-BSB-RT-${Date.now()}-DX`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 590.0,
-              sellingRate: 850.0,
-              allotted: 4,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 53822,
-      name: "Comfort Hotel Taguatinga",
-      categoryCode: "3EST",
-      categoryName: "3 STARS",
-      destinationCode: "BSB",
-      destinationName: "Taguatinga",
-      zoneCode: 2,
-      zoneName: "Setor Hoteleiro de Taguatinga",
-      latitude: "-15.8343",
-      longitude: "-48.0508",
-      minRate: 212.0,
-      maxRate: 272.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/05/053822/053822a_hb_a_001.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/05/053822/053822a_hb_a_001.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/05/053822/053822a_hb_ro_106_20250604_123555.jpeg",
-      ],
-      description: "Hotel executivo com piscina ao ar livre, sauna, academia e localização estratégica próximo ao Taguatinga Shopping.",
-      address: "Setor Hoteleiro - Projeção I, Taguatinga",
-      facilities: ["Piscina exterior", "Sauna", "Academia", "Wi-Fi cortesia"],
-      rooms: [
-        {
-          code: "DBL.SU",
-          name: "Quarto Duplo Superior",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/05/053822/053822a_hb_ro_106_20250604_123555.jpeg",
-          rates: [
-            {
-              rateKey: `HB-TAG-${Date.now()}`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 212.0,
-              sellingRate: 272.0,
-              allotted: 4,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 490961,
-      name: "Go Inn Taguatinga",
-      categoryCode: "3EST",
-      categoryName: "3 STARS",
-      destinationCode: "BSB",
-      destinationName: "Taguatinga",
-      zoneCode: 2,
-      zoneName: "Taguatinga",
-      latitude: "-15.8320",
-      longitude: "-48.0520",
-      minRate: 197.0,
-      maxRate: 250.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/49/490961/490961a_hb_a_005.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/49/490961/490961a_hb_a_005.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/49/490961/490961a_hb_r_001_20250820_183344.jpg",
-      ],
-      description: "Praticidade, quartos modernos, ar-condicionado e café da manhã incluso para estadias de negócios ou lazer.",
-      address: "Rua Setor Hoteleiro Projeção D, Brasília",
-      facilities: ["Wi-Fi alta velocidade", "Estacionamento", "Recepção 24h"],
-      rooms: [
-        {
-          code: "STD.DBL",
-          name: "Quarto Standard Casal",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/490961/490961a_hb_r_001_20250820_183344.jpg",
-          rates: [
-            {
-              rateKey: `HB-GOINN-${Date.now()}`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 197.0,
-              sellingRate: 250.0,
-              allotted: 5,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 91922,
-      name: "Park Inn by Radisson Berrini",
-      categoryCode: "4EST",
-      categoryName: "4 STARS",
-      destinationCode: "SAO",
-      destinationName: "São Paulo",
-      zoneCode: 3,
-      zoneName: "Brooklin / Berrini",
-      latitude: "-23.6080",
-      longitude: "-46.6960",
-      minRate: 460.0,
-      maxRate: 620.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/09/091922/091922a_hb_ro_120_20260429_120818.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/09/091922/091922a_hb_ro_120_20260429_120818.jpg",
-      ],
-      description: "Localizado no polo financeiro da Berrini em São Paulo, com fácil acesso ao Shopping Morumbi e aeroporto de Congonhas.",
-      address: "Rua Quintana, 934 - Brooklin, São Paulo",
-      facilities: ["Restaurante internacional", "Academia", "Business center", "Wi-Fi cortesia"],
-      rooms: [
-        {
-          code: "DBL.ST",
-          name: "Quarto Duplo Superior",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/09/091922/091922a_hb_ro_120_20260429_120818.jpg",
-          rates: [
-            {
-              rateKey: `HB-SAO-PI-${Date.now()}`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 460.0,
-              sellingRate: 620.0,
-              allotted: 4,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 178811,
-      name: "Hotel Dan Inn Planalto São Paulo",
-      categoryCode: "3EST",
-      categoryName: "3 STARS",
-      destinationCode: "SAO",
-      destinationName: "São Paulo",
-      zoneCode: 1,
-      zoneName: "Centro Histórico",
-      latitude: "-23.5410",
-      longitude: "-46.6360",
-      minRate: 230.0,
-      maxRate: 310.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/17/178811/178811a_hb_r_001.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/17/178811/178811a_hb_r_001.jpg",
-      ],
-      description: "Tradicional hotel no centro de São Paulo próximo à Rua 25 de Março, Praça da República e estações do metrô.",
-      address: "Av. Cásper Líbero, 115 - Centro, São Paulo",
-      facilities: ["Restaurante", "Recepção 24h", "Wi-Fi cortesia", "Elevador"],
-      rooms: [
-        {
-          code: "DBL.ST",
-          name: "Quarto Duplo Standard",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/17/178811/178811a_hb_r_001.jpg",
-          rates: [
-            {
-              rateKey: `HB-SAO-DI-${Date.now()}`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 230.0,
-              sellingRate: 310.0,
-              allotted: 5,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 1067,
-      name: "Palácio Atlântico & Spa",
-      categoryCode: "5EST",
-      categoryName: "5 STARS LUXURY",
-      destinationCode: "RIO",
-      destinationName: "Rio de Janeiro",
-      zoneCode: 1,
-      zoneName: "São Conrado",
-      latitude: "-22.9982",
-      longitude: "-43.2689",
-      minRate: 1630.0,
-      maxRate: 2400.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_008.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_a_008.jpg",
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_f_001.jpg",
-      ],
-      description: "Empreendimento de alto luxo de frente para o mar com serviços de spa exclusivos.",
-      address: "Av. Pref. Mendes de Morais, São Conrado, Rio de Janeiro",
-      facilities: ["Spa", "Piscina infinita", "Serviço de praia"],
-      rooms: [
-        {
-          code: "SUI.DLX",
-          name: "Suíte Deluxe Frente Mar",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_228_20260720_131739.png",
-          rates: [
-            {
-              rateKey: `HB-${Date.now()}-SUI-01`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 1630.0,
-              sellingRate: 2400.0,
-              allotted: 3,
-              paymentType: "AT_WEB",
-              boardCode: "BB",
-              boardName: "Café da Manhã Incluso",
-            },
-          ],
-        },
-      ],
-    },
-    {
-      code: 2044,
-      name: "Reserva dos Corais Resort",
-      categoryCode: "5EST",
-      categoryName: "5 STARS RESORT",
-      destinationCode: "MCZ",
-      destinationName: "Maceió & Maragogi",
-      zoneCode: 4,
-      zoneName: "Praia de Antunes",
-      latitude: "-9.0122",
-      longitude: "-35.2133",
-      minRate: 2150.0,
-      maxRate: 3290.0,
-      currency: "BRL",
-      heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_f_001.jpg",
-      gallery: [
-        "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_f_001.jpg",
-      ],
-      description: "Resort pé na areia com piscinas naturais privativas e gastronomia all-inclusive.",
-      address: "Praia de Antunes, Maragogi - AL",
-      facilities: ["All Inclusive", "Piscinas Naturais", "Esportes Náuticos"],
-      rooms: [
-        {
-          code: "BGL.PL",
-          name: "Bangalô Coral com Piscina Privativa",
-          heroImage: "https://photos.hotelbeds.com/giata/bigger/49/493221/493221a_hb_ro_206_20260430_170244.png",
-          rates: [
-            {
-              rateKey: `HB-${Date.now()}-BGL-02`,
-              rateClass: "NOR",
-              rateType: "BOOKABLE",
-              net: 2150.0,
-              sellingRate: 3290.0,
-              allotted: 2,
-              paymentType: "AT_WEB",
-              boardCode: "AI",
-              boardName: "All Inclusive",
-            },
-          ],
-        },
-      ],
-    },
-  ];
-
-  const filtered = destinationCode
-    ? allHotels.filter(
-        (h) => h.destinationCode.toUpperCase() === destinationCode.toUpperCase()
-      )
-    : allHotels;
-
-  const resultHotels = filtered.length > 0 ? filtered : allHotels;
-
-  return {
-    ok: true,
-    isSimulation: true,
-    message: "Catálogo oficial de propriedades sincronizadas.",
-    checkIn,
-    checkOut,
-    total: resultHotels.length,
-    hotels: resultHotels,
-  };
-}
-

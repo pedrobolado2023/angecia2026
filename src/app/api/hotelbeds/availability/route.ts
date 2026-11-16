@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchHotelbedsAvailability } from "@/lib/hotelbeds";
+import { findBrazilHotelbedsCodes, searchHotelbedsAvailability } from "@/lib/hotelbeds";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { getSyncExchangeRateToBRL } from "@/lib/currency";
 
@@ -64,20 +64,30 @@ interface AvailabilityCacheItem {
 }
 const availabilityMemoryCache = new Map<string, AvailabilityCacheItem>();
 const AVAILABILITY_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutos
+const dateInBrazil = () => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+}).format(new Date());
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const checkIn = searchParams.get("checkIn") || "2026-11-20";
-    const checkOut = searchParams.get("checkOut") || "2026-11-22";
+    const checkIn = searchParams.get("checkIn") || "";
+    const checkOut = searchParams.get("checkOut") || "";
     const destinationCode = searchParams.get("destinationCode") || "RIO";
     const adults = Math.max(1, Number(searchParams.get("adults") || "2"));
     const children = Math.max(0, Number(searchParams.get("children") || "0"));
+    const infants = Math.max(0, Number(searchParams.get("infants") || "0"));
+    if (![adults, children, infants].every(Number.isSafeInteger) || adults > 20 || children + infants > 20 ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut) ||
+        checkIn < dateInBrazil() || checkOut <= checkIn) {
+      return NextResponse.json({ ok: false, message: "Confira as datas e o número de hóspedes." }, { status: 400 });
+    }
     const hotelCodesParam = searchParams.get("hotelCodes");
     const hotelCodes = hotelCodesParam ? hotelCodesParam.split(",") : undefined;
+    const property = (searchParams.get("property") || "").trim().slice(0, 120);
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    const cacheKey = `${destinationCode.toUpperCase()}_${checkIn}_${checkOut}_${adults}_${children}_${(hotelCodes || []).join(",")}`;
+    const cacheKey = JSON.stringify([destinationCode.toUpperCase(), checkIn, checkOut, adults, children, infants, hotelCodes, property]);
     const cached = availabilityMemoryCache.get(cacheKey);
     const now = Date.now();
 
@@ -86,13 +96,46 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(cached.payload);
     }
 
-    const result = await searchHotelbedsAvailability({
+    const options = {
       checkIn,
       checkOut,
       destinationCode,
       hotelCodes,
-      occupancies: [{ rooms: 1, adults, children }],
-    });
+      occupancies: [{
+        rooms: 1, adults, children: children + infants,
+        ...(children + infants > 0 ? {
+          paxes: [
+            ...Array.from({ length: children }, () => ({ type: "CH" as const, age: 8 })),
+            ...Array.from({ length: infants }, () => ({ type: "CH" as const, age: 1 })),
+          ],
+        } : {}),
+      }],
+    };
+    let result;
+    if (property && !hotelCodes) {
+      const codes = await findBrazilHotelbedsCodes(property).catch((error) => {
+        console.warn("[Hotelbeds] Busca no catálogo nacional indisponível:", error instanceof Error ? error.message : error);
+        return null;
+      });
+      if (!codes?.length) {
+        // Neighborhood names are not always present in the catalog's city field.
+        result = await searchHotelbedsAvailability(options);
+        if (!codes) result.contentIncomplete = true;
+      } else {
+        const batches = [];
+        for (let offset = 0; offset < codes.length; offset += 2000) {
+          batches.push(await searchHotelbedsAvailability({ ...options, hotelCodes: codes.slice(offset, offset + 2000) }));
+        }
+        const hotels = [...new Map(batches.flatMap((batch) => batch.hotels).map((hotel) => [hotel.code, hotel])).values()];
+        result = {
+          ok: batches.some((batch) => batch.ok), isSimulation: false, checkIn, checkOut, hotels, total: hotels.length,
+          contentIncomplete: batches.some((batch) => !batch.ok || batch.contentIncomplete),
+          message: batches.find((batch) => !batch.ok)?.message,
+        };
+      }
+    } else {
+      result = await searchHotelbedsAvailability(options);
+    }
 
     const enrichedHotels = enrichHotelsWithClubPricing(result.hotels || []);
 
@@ -104,18 +147,17 @@ export async function GET(request: NextRequest) {
       checkOut: result.checkOut,
       total: result.total,
       hotels: enrichedHotels,
-      rawError: result.rawError,
+      contentIncomplete: result.contentIncomplete,
     };
 
-    // Se a API ao vivo retornou com sucesso, armazena no cache
-    if (result.ok && !result.isSimulation && enrichedHotels.length > 0) {
-      availabilityMemoryCache.set(cacheKey, { timestamp: now, payload: responsePayload });
-    } else if (cached && cached.payload && (!result.ok || result.isSimulation)) {
-      // Se a Hotelbeds estourou a cota ou falhou, mas temos cache anterior ao vivo, serve o cache anterior
-      return NextResponse.json(cached.payload);
+    if (result.ok && !result.contentIncomplete) {
+      if (availabilityMemoryCache.size >= 256) {
+        const oldest = availabilityMemoryCache.keys().next().value;
+        if (oldest !== undefined) availabilityMemoryCache.delete(oldest);
+      }
+      availabilityMemoryCache.set(cacheKey, { timestamp: Date.now(), payload: responsePayload });
     }
-
-    return NextResponse.json(responsePayload);
+    return NextResponse.json(responsePayload, { status: result.ok ? 200 : 502 });
   } catch (err: unknown) {
     const msg =
       err instanceof Error ? err.message : "Erro ao consultar Hotelbeds";
@@ -152,7 +194,7 @@ export async function POST(request: NextRequest) {
       checkOut: result.checkOut,
       total: result.total,
       hotels: enrichedHotels,
-      rawError: result.rawError,
+      contentIncomplete: result.contentIncomplete,
     });
   } catch (err: unknown) {
     const msg =

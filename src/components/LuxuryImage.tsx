@@ -12,7 +12,11 @@ interface LuxuryImageProps {
   priority?: boolean;
 }
 
-export function LuxuryImage({
+export function LuxuryImage(props: LuxuryImageProps) {
+  return <Photo key={props.src} {...props} />;
+}
+
+function Photo({
   src,
   alt,
   className = "",
@@ -20,15 +24,15 @@ export function LuxuryImage({
   priority = true,
 }: LuxuryImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const [hasError, setHasError] = useState(!src);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Efeito para verificar imediatamente se a imagem já está em cache
   useEffect(() => {
     setIsLoaded(false);
-    setHasError(false);
-    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
-      setIsLoaded(true);
+    if (imgRef.current?.complete) {
+      setIsLoaded(imgRef.current.naturalWidth > 0);
+      setHasError(imgRef.current.naturalWidth === 0);
     }
   }, [src]);
 
@@ -52,7 +56,7 @@ export function LuxuryImage({
           <span className="text-xs font-medium text-[#182026] line-clamp-1">
             {fallbackLabel || alt}
           </span>
-          <span className="text-[10px] text-[#5C646B] mt-0.5">Curadoria Hóspede Club</span>
+          <span className="text-[10px] text-[#5C646B] mt-0.5">Foto indisponível</span>
         </div>
       ) : (
         <img
@@ -66,8 +70,7 @@ export function LuxuryImage({
           alt={alt}
           loading={priority ? "eager" : "lazy"}
           decoding="async"
-          // @ts-expect-error fetchpriority attribute
-          fetchpriority={priority ? "high" : "auto"}
+          fetchPriority={priority ? "high" : "auto"}
           onLoad={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
           className={`relative z-10 w-full h-full object-cover transition-opacity duration-200 ${
