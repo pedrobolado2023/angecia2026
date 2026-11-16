@@ -152,9 +152,9 @@ O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, voc�
 
 ### Checkout Mercado Pago e Hotelbeds
 
-- Em homologação, use `CHECKOUT_MODE=test`, credenciais de teste do Mercado Pago e `HOTELBEDS_ENVIRONMENT=test`.
+- Cadastre uma aplicação **Checkout Transparente via Orders** no Mercado Pago. Em homologação, use `CHECKOUT_MODE=test`, `HOTELBEDS_ENVIRONMENT=test`, `MERCADOPAGO_TEST_ACCESS_TOKEN` e `MERCADOPAGO_TEST_PUBLIC_KEY` com as credenciais da aba de teste dessa aplicação. O prefixo `APP_USR-` aparece também em credenciais de teste.
 - Em produção, habilite `CHECKOUT_MODE=live` somente com credenciais de produção dos dois provedores e depois de homologar Pix e cartão. Não misture cobrança real com reservas de teste.
-- Ative as notificações de **Pagamentos** no Mercado Pago para `/api/webhooks/payment` e configure `MERCADOPAGO_WEBHOOK_SECRET` com a chave de assinatura das notificações da aplicação. `MERCADOPAGO_PUBLIC_KEY` é obrigatória para cartão. Se a integração usar URL por pagamento, preencha também `MERCADOPAGO_NOTIFICATION_URL` com a URL HTTPS desse endpoint.
+- No painel do Mercado Pago, configure o evento **Orders** com a URL HTTPS completa do endpoint `/api/webhooks/payment`. Use o segredo de assinatura da configuração de teste em `MERCADOPAGO_TEST_WEBHOOK_SECRET` e o da configuração de produção em `MERCADOPAGO_WEBHOOK_SECRET`. Em produção, use `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_PUBLIC_KEY` da aplicação.
 - Acompanhe pedidos pagos sem voucher em `checkout_orders`. O estado `review` exige conciliar o pagamento no Mercado Pago e verificar a reserva na Hotelbeds antes de confirmar ou estornar. Pedidos parados em `confirming` após falha de execução também exigem conciliação. O checkout não tenta uma segunda reserva automaticamente nesses casos.
 
 - Arquivos `.env` e `.env.local` estão estritamente no `.gitignore` e **nunca** vão para o GitHub.

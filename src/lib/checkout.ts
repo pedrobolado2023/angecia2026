@@ -4,7 +4,7 @@ import { calculateVellutoPricing } from "./pricingEngine";
 import { checkHotelbedsRate, createHotelbedsBooking, searchHotelbedsAvailability, type HotelbedsPax } from "./hotelbeds";
 import { ensurePostgresTables, getPostgresPool, saveBookingToPostgres, type SaveBookingRecordInput } from "./postgres";
 import { type CustomerCRMRecord } from "./customerStore";
-import { type MercadoPagoPayment } from "./mercadopago";
+import { type CheckoutMode, type MercadoPagoPayment } from "./mercadopago";
 import { isValidCPF } from "./cpfValidator";
 
 export type CheckoutState = "quoted" | "paying" | "pending" | "rejected" | "confirming" | "confirmed" | "review";
@@ -15,6 +15,7 @@ type CheckoutPayload = {
   paxes: HotelbedsPax[];
   method: "pix" | "card";
   checkOut: string;
+  mode: CheckoutMode;
 };
 
 export type CheckoutOrder = {
@@ -30,6 +31,7 @@ export type CheckoutOrder = {
   supplier_remarks: string | null;
   expires_at: Date | string;
   updated_at: Date | string;
+  created_at: Date | string;
 };
 
 export class CheckoutError extends Error {
@@ -62,7 +64,7 @@ function hotelbedsRatePlan(key: string) {
   return parts.slice(0, 9).join("|");
 }
 
-export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Record<string, unknown>) {
+export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Record<string, unknown>, mode: CheckoutMode) {
   const db = await checkoutDb();
   const { checkInDate, checkOutDate, adults, children, infants } = body;
   const nights = (date(checkOutDate) - date(checkInDate)) / 86400000;
@@ -181,6 +183,7 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
   }
   const id = randomUUID();
   const payload: CheckoutPayload = {
+    mode,
     method, rateKey, paxes, checkOut,
     booking: {
       ownerMemberCode: customer.id, hotelId: `hotelbeds-${hotelCode}`, hotelName: hotel.name,
@@ -235,8 +238,8 @@ export async function reconcileCheckoutPayment(payment: MercadoPagoPayment) {
   if (["confirming", "confirmed", "review", "rejected"].includes(order.state)) return order;
   const db = await checkoutDb();
   const verified = payment.amountCents === order.amount_cents && payment.currency === "BRL" &&
-    Boolean(payment.method) && (order.payload.method === "pix" ? payment.method === "pix" : payment.method !== "pix");
-  const next = !verified ? "review" : payment.status === "approved" ? "confirming" :
+    payment.method === order.payload.method && payment.mode === order.payload.mode;
+  const next = !verified || payment.status === "review" ? "review" : payment.status === "approved" ? "confirming" :
     ["pending", "in_process", "authorized"].includes(payment.status) ? "pending" : "rejected";
   const { rows: [claimed] } = await db.query<CheckoutOrder>(
     `UPDATE checkout_orders SET state = $2, payment_id = $3, payment = $4, updated_at = NOW()

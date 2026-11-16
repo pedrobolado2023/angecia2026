@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticatedCustomer } from "@/lib/customerSession";
 import { CheckoutError, checkoutDb, checkoutResponse, createCheckoutQuote, getCheckoutOrder, isOrderId, reconcileCheckoutPayment, type CheckoutOrder } from "@/lib/checkout";
-import { checkoutPaymentConfigured, createMercadoPagoPayment, findMercadoPagoPayment, getMercadoPagoPayment, MercadoPagoError } from "@/lib/mercadopago";
+import { checkoutPaymentConfigured, createMercadoPagoPayment, findMercadoPagoPayment, getMercadoPagoPayment, mercadoPagoConfig, MercadoPagoError } from "@/lib/mercadopago";
 
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -10,7 +10,8 @@ function json(data: unknown, status = 200) {
 export async function POST(request: NextRequest) {
   const customer = await authenticatedCustomer(request);
   if (!customer) return json({ error: "Entre na sua conta para reservar." }, 401);
-  if (!checkoutPaymentConfigured()) return json({ error: "Pagamento temporariamente indisponível." }, 503);
+  const config = mercadoPagoConfig();
+  if (!config || !checkoutPaymentConfigured()) return json({ error: "Pagamento temporariamente indisponível." }, 503);
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object" || ["cardNumber", "cardExpiry", "cardCvv", "securityCode"].some((field) => Object.hasOwn(body, field))) {
     return json({ error: "Dados de pagamento inválidos." }, 400);
@@ -18,26 +19,26 @@ export async function POST(request: NextRequest) {
 
   try {
     if (body.action === "quote") {
-      if (body.paymentModality === "CARD" && !process.env.MERCADOPAGO_PUBLIC_KEY) {
+      if (body.paymentModality === "CARD" && !config.publicKey) {
         return json({ error: "Cartão temporariamente indisponível. Se preferir, selecione Pix." }, 503);
       }
-      const order = await createCheckoutQuote(customer, body);
-      return json({ ...checkoutResponse(order), publicKey: order.payload.method === "card" ? process.env.MERCADOPAGO_PUBLIC_KEY : undefined });
+      const order = await createCheckoutQuote(customer, body, config.mode);
+      return json({ ...checkoutResponse(order), publicKey: order.payload.method === "card" ? config.publicKey : undefined });
     }
     if (body.action !== "pay" || !isOrderId(body.orderId)) return json({ error: "Cotação inválida." }, 400);
     const order = await getCheckoutOrder(body.orderId, customer);
     if (!order) return json({ error: "Cotação não encontrada." }, 404);
     if (order.state !== "quoted") return json(checkoutResponse(order));
+    if (order.payload.mode !== config.mode) return json({ error: "Cotação expirada. Confira novamente o preço." }, 409);
     if (new Date(order.expires_at).getTime() <= Date.now()) return json({ error: "Cotação expirada. Confira novamente o preço." }, 409);
     let card;
     if (order.payload.method === "card") {
-      const { token, methodId, issuerId } = body.card || {};
+      const { token, methodId } = body.card || {};
       if (typeof token !== "string" || !/^[a-z0-9_-]{10,256}$/i.test(token) ||
-          typeof methodId !== "string" || !/^[a-z0-9_-]{1,32}$/i.test(methodId) || methodId === "pix" ||
-          (issuerId !== undefined && (typeof issuerId !== "string" || !/^\d{1,20}$/.test(issuerId)))) {
+          typeof methodId !== "string" || !/^[a-z0-9_-]{1,32}$/i.test(methodId) || methodId === "pix") {
         return json({ error: "Confira os dados do cartão no formulário." }, 400);
       }
-      card = { token, methodId, issuerId };
+      card = { token, methodId };
     }
     const db = await checkoutDb();
     const { rows: [claimed] } = await db.query<CheckoutOrder>(
@@ -53,7 +54,6 @@ export async function POST(request: NextRequest) {
       const booking = claimed.payload.booking;
       const payment = await createMercadoPagoPayment({
         orderId: claimed.id, amountCents: claimed.amount_cents,
-        description: `Hóspede Club — ${booking.hotelName} (${booking.nightsCount} noites)`.slice(0, 200),
         method: claimed.payload.method, installments: booking.installments || 1,
         email: booking.primaryEmail, cpf: booking.primaryCpf, card,
       });
@@ -84,9 +84,9 @@ export async function GET(request: NextRequest) {
   try {
     const order = await getCheckoutOrder(id, customer);
     if (!order) return json({ error: "Pedido não encontrado." }, 404);
-    if (order.state === "paying" || order.state === "pending") {
+    if (order.payload.mode === mercadoPagoConfig()?.mode && (order.state === "paying" || order.state === "pending")) {
       try {
-        const payment = order.payment_id ? await getMercadoPagoPayment(order.payment_id) : await findMercadoPagoPayment(id);
+        const payment = order.payment_id ? await getMercadoPagoPayment(order.payment_id) : await findMercadoPagoPayment(id, new Date(order.created_at).toISOString());
         if (payment) {
           const updated = await reconcileCheckoutPayment(payment);
           if (updated?.id === order.id) return json(checkoutResponse(updated));
