@@ -53,7 +53,11 @@ export async function sendWhatsAppVerificationCode(params: {
 
 
   // Endpoints prioritários para chamada HTTP do WACLI Gateway
-  const candidateEndpoints = [process.env.WACLI_ENDPOINT || "http://hospede-wacli:3001/send"];
+  const configuredEndpoint = process.env.WACLI_ENDPOINT?.trim();
+  const candidateEndpoints = configuredEndpoint ? [configuredEndpoint] : [
+    "http://hospede-wacli:3001/send",
+    "https://agentesia-hospede-wacli.4nvzqw.easypanel.host/send",
+  ];
 
   const wacliApiKey = process.env.WACLI_API_KEY || process.env.WACLI_TOKEN;
 
@@ -64,7 +68,8 @@ export async function sendWhatsAppVerificationCode(params: {
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(30000),
+        redirect: "error",
         headers: {
           "Content-Type": "application/json",
           ...(wacliApiKey ? { Authorization: `Bearer ${wacliApiKey}` } : {}),
@@ -83,7 +88,7 @@ export async function sendWhatsAppVerificationCode(params: {
         data = { raw: responseText };
       }
 
-      if (response.ok && data.success !== false) {
+      if (response.ok && data.success === true) {
         return {
           success: true,
           messageId: data.id || data.messageId || `WACLI-${Date.now()}`,
@@ -92,7 +97,7 @@ export async function sendWhatsAppVerificationCode(params: {
       }
 
       // Analisa o motivo da falha retornado pelo WhatsApp / wacli
-      const errorMsg = data.error || responseText;
+      const errorMsg = typeof data.error === "string" ? data.error : responseText;
       console.warn("[WACLI] O gateway recusou o envio.", response.status);
       lastError = errorMsg;
 
@@ -102,7 +107,7 @@ export async function sendWhatsAppVerificationCode(params: {
         break;
       }
     } catch (httpErr: any) {
-      console.warn(`[WACLI HTTP Warning] Falha ao tentar ${endpoint}:`, httpErr.message);
+      console.warn("[WACLI] Falha na conexão com o gateway.");
       lastError = httpErr.message;
     }
   }
@@ -119,7 +124,7 @@ export async function sendWhatsAppVerificationCode(params: {
   // 2. Tenta envio via comando de terminal wacli local (se binário estiver instalado no PATH do servidor)
   try {
     const wacliBin = process.env.WACLI_BIN_PATH || "wacli";
-    await execAsync(wacliBin, ["send", "--to", cleanPhone, "--message", messageText], { timeout: 8000 });
+    await execAsync(wacliBin, ["send", "text", "--to", `${cleanPhone}@s.whatsapp.net`, "--message", messageText], { timeout: 25000 });
     return {
       success: true,
       messageId: `CLI-${Date.now()}`,

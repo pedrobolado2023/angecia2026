@@ -18,10 +18,14 @@ export async function POST(request: NextRequest) {
     try {
       const issued = await issuePasswordResetCode(identifier);
       if (issued) {
-        await sendWhatsAppVerificationCode({
+        const delivery = await sendWhatsAppVerificationCode({
           phone: issued.customer.whatsapp, code: issued.code, customerName: issued.customer.fullName,
           purpose: "password-reset",
         });
+        if (!delivery.success) {
+          console.warn("[Recuperação de senha] Entrega não confirmada.",
+            delivery.selfNumberError ? "Destino é o próprio número do gateway." : "Falha no gateway.");
+        }
       }
     } catch {
       console.warn("[Recuperação de senha] Não foi possível concluir o envio.");
