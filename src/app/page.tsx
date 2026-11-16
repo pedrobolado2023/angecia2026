@@ -18,6 +18,7 @@ import { resolveRoomCancellationPolicy } from "@/lib/cancellationPolicy";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
+import { HotelResultFilters, emptyHotelFilters, mealPlans, type HotelFilters } from "@/components/HotelResultFilters";
 import { HotelSearchFilters, type SearchCriteria } from "@/components/HotelSearchFilters";
 import { LuxuryImage } from "@/components/LuxuryImage";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
@@ -110,6 +111,21 @@ const HOTELBEDS_PLACES: [string, string, string][] = [
   ["porto alegre", "POO", "gramado-canela"], ["belo horizonte", "BHZ", "campos-monte-verde"],
 ];
 
+type HotelSort = "recommended" | "priceAscending" | "priceDescending" | "stars";
+
+function officialStarRating(code?: string, name?: string): number {
+  const match = code?.match(/^([1-5])(?:EST|STAR)?$/i) ||
+    name?.match(/^([1-5])\s*(?:stars?|estrelas?)\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function countFilterOptions(values: string[], describe: (value: string) => string) {
+  const totals = new Map<string, number>();
+  for (const value of values) totals.set(value, (totals.get(value) || 0) + 1);
+  return [...totals].map(([value, count]) => ({ value, count, label: describe(value) }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+}
+
 function resultsUrl(criteria: SearchCriteria) {
   const params = new URLSearchParams({
     destino: criteria.query,
@@ -135,6 +151,8 @@ export default function HospedeClubApp() {
   const [hotelsCatalog, setHotelsCatalog] = useState<CuratedHotel[]>(CURATED_HOTELS);
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("home");
   const [submittedSearch, setSubmittedSearch] = useState<SearchCriteria | null>(null);
+  const [hotelFilters, setHotelFilters] = useState<HotelFilters>(emptyHotelFilters);
+  const [hotelSort, setHotelSort] = useState<HotelSort>("recommended");
   const resultsScroll = useRef(0);
   const focusSearchFilters = useRef(false);
   const hotelOrigin = useRef<ActiveScreen>("home");
@@ -683,7 +701,10 @@ export default function HospedeClubApp() {
             neighborhood: hotel.zoneName || "",
             clusterId: city?.clusterId || "cluster-1",
             accommodationType: "hotel",
-            stars: Number.parseInt(hotel.categoryCode || "", 10) || 0,
+            stars: officialStarRating(hotel.categoryCode, hotel.categoryName),
+            mealPlanCodes: [...new Set<string>((hotel.rooms || []).flatMap((room: { rates?: { boardCode?: string }[] }) =>
+              (room.rates || []).flatMap((rate) => rate.boardCode && Object.hasOwn(mealPlans, rate.boardCode) ? [rate.boardCode] : [])
+            ))],
             ratingScore: 0,
             reviewsCount: 0,
             heroImage: gallery[0] || "",
@@ -788,9 +809,43 @@ export default function HospedeClubApp() {
     return words.every((word) => haystack.includes(word));
   };
 
-  const filteredHotels = showFavoritesOnly
-    ? hotelsCatalog.filter((hotel) => favoriteIds.includes(hotel.id) && hotel.omnibeesChannelCode.startsWith("HB-"))
-    : hotelbedsResult.filter((hotel) => matchesHotelSearch(hotel, hotelSearchFilter));
+  const savedHotels = hotelsCatalog.filter((hotel) =>
+    favoriteIds.includes(hotel.id) && hotel.omnibeesChannelCode.startsWith("HB-")
+  );
+  const searchHotels = useMemo(() => hotelbedsResult.filter((hotel) => matchesHotelSearch(hotel, hotelSearchFilter))
+    .map((hotel) => ({
+      hotel,
+      region: hotel.neighborhood.trim(),
+      pricing: calculateVellutoPricing(hotel.netRate, hotel.barRate, 0.15, hotel.cleaningFee, hotel.securityDeposit),
+    })), [hotelbedsResult, hotelSearchFilter]);
+
+  const resultFilterOptions = useMemo(() => ({
+    stars: Array.from({ length: 5 }, (_, index) => {
+      const stars = index + 1;
+      return {
+        value: String(stars),
+        label: `${stars} ${stars === 1 ? "estrela" : "estrelas"}`,
+        count: searchHotels.filter(({ hotel }) => hotel.stars === stars).length,
+      };
+    }),
+    regions: countFilterOptions(searchHotels.flatMap(({ region }) => region ? [region] : []), (region) => region),
+    meals: countFilterOptions(searchHotels.flatMap(({ hotel }) => hotel.mealPlanCodes || []), (code) => mealPlans[code]),
+  }), [searchHotels]);
+
+  const visibleSearchHotels = searchHotels.filter(({ hotel, region, pricing }) =>
+    (!hotelFilters.stars.length || hotelFilters.stars.includes(String(hotel.stars))) &&
+    (!hotelFilters.regions.length || hotelFilters.regions.includes(region)) &&
+    (!hotelFilters.meals.length || hotelFilters.meals.some((meal) => hotel.mealPlanCodes?.includes(meal))) &&
+    (!hotelFilters.maxPrice || Math.round(pricing.pix.pixPrice) <= Number(hotelFilters.maxPrice)) &&
+    (!hotelFilters.savedOnly || favoriteIds.includes(hotel.id))
+  );
+  if (hotelSort !== "recommended") {
+    visibleSearchHotels.sort((a, b) => {
+      if (hotelSort === "stars") return b.hotel.stars - a.hotel.stars;
+      const priceDifference = a.pricing.pix.pixPrice - b.pricing.pix.pixPrice;
+      return hotelSort === "priceAscending" ? priceDifference : -priceDifference;
+    });
+  }
 
   const activeDestinationCity = DESTINATION_CITIES.find((city) => city.id === selectedCityId) || DESTINATION_CITIES[0];
   const heroSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -821,6 +876,10 @@ export default function HospedeClubApp() {
     const url = resultsUrl(criteria);
     if (!fromHistory && window.location.pathname + window.location.search !== url) {
       window.history.pushState(null, "", url);
+    }
+    if (currentResultsUrl.current !== url) {
+      setHotelFilters(emptyHotelFilters);
+      setHotelSort("recommended");
     }
     currentResultsUrl.current = url;
     resultsScroll.current = 0;
@@ -1974,7 +2033,7 @@ export default function HospedeClubApp() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {filteredHotels.map((hotel) => {
+                  {savedHotels.map((hotel) => {
                     const pricing = calculateVellutoPricing(
                       hotel.netRate,
                       hotel.barRate,
@@ -2062,7 +2121,7 @@ export default function HospedeClubApp() {
                       Resultados da Pesquisa
                     </span>
                     <h1 className="font-editorial text-2xl sm:text-4xl font-normal text-[#182026]">
-                      {isHotelbedsLoading ? "Buscando hotéis" : hotelbedsError ? "Consulta indisponível" : `${filteredHotels.length} ${filteredHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"}`} para &ldquo;{searchQuery}&rdquo;
+                      {isHotelbedsLoading ? "Buscando hotéis" : hotelbedsError ? "Consulta indisponível" : `${searchHotels.length} ${searchHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"}`} para &ldquo;{searchQuery}&rdquo;
                     </h1>
                   </div>
                 </div>
@@ -2076,11 +2135,33 @@ export default function HospedeClubApp() {
                 )}
 
                 {hotelbedsNotice && <p role="status" className="mb-4 text-sm text-[#9A6D28]">{hotelbedsNotice}</p>}
+                <div className={searchHotels.length > 0 ? "grid gap-6 lg:grid-cols-[235px_minmax(0,1fr)]" : ""}>
+                  {searchHotels.length > 0 && (
+                    <HotelResultFilters filters={hotelFilters} options={resultFilterOptions} onChange={setHotelFilters} />
+                  )}
+                  <div className="min-w-0">
+                    {searchHotels.length > 0 && (
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <p aria-live="polite" className="text-sm text-[#5C646B]">
+                          {visibleSearchHotels.length} de {searchHotels.length} hotéis
+                        </p>
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                          Ordenar por
+                          <select value={hotelSort} onChange={(event) => setHotelSort(event.target.value as HotelSort)}
+                            className="rounded-lg border border-[#E2D9C8] bg-white px-3 py-2">
+                            <option value="recommended">Ordem padrão</option>
+                            <option value="priceAscending">Menor preço</option>
+                            <option value="priceDescending">Maior preço</option>
+                            <option value="stars">Mais estrelas</option>
+                          </select>
+                        </label>
+                      </div>
+                    )}
                 {hotelbedsError ? (
                   <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{hotelbedsError}</p>
-                ) : filteredHotels.length === 0 ? (
+                ) : visibleSearchHotels.length === 0 ? (
                   isHotelbedsLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {[1, 2, 3].map((s) => (
                         <div
                           key={`home-skel-${s}`}
@@ -2101,6 +2182,14 @@ export default function HospedeClubApp() {
                         </div>
                       ))}
                     </div>
+                  ) : searchHotels.length > 0 ? (
+                    <div className="rounded-2xl border border-[#E5DEC9] bg-white p-8 text-center">
+                      <p className="text-sm">Nenhum hotel corresponde aos filtros selecionados.</p>
+                      <button type="button" onClick={() => setHotelFilters(emptyHotelFilters)}
+                        className="mt-3 text-sm font-semibold text-[#0F5257] underline">
+                        Limpar filtros
+                      </button>
+                    </div>
                   ) : (
                     <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
                       <p className="text-[#182026] font-medium text-sm">
@@ -2113,15 +2202,8 @@ export default function HospedeClubApp() {
                     </div>
                   )
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredHotels.map((hotel) => {
-                      const pricing = calculateVellutoPricing(
-                        hotel.netRate,
-                        hotel.barRate,
-                        0.15,
-                        hotel.cleaningFee || 0,
-                        hotel.securityDeposit || 0
-                      );
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {visibleSearchHotels.map(({ hotel, pricing }) => {
                       const isFav = favoriteIds.includes(hotel.id);
                       const isSoldOut = Boolean(hotel.stopSell || hotel.omnibeesAvailableRooms <= 0);
 
@@ -2164,7 +2246,7 @@ export default function HospedeClubApp() {
                               <h3 className="font-editorial text-xl font-normal text-[#182026] mt-0.5 leading-snug">
                                 {hotel.name}
                               </h3>
-                              <p className="text-xs text-[#5C646B] line-clamp-2 mt-1.5">{hotel.subtitle}</p>
+                              <p className="text-xs text-[#5C646B] line-clamp-2 mt-1.5">{hotel.stars ? `${hotel.stars} ${hotel.stars === 1 ? "estrela" : "estrelas"}` : hotel.subtitle}</p>
                             </div>
                           </div>
                           <div className="px-5 pb-5 pt-3 border-t border-[#F0EAE1] bg-[#FAF7F2] flex items-center justify-between gap-3">
@@ -2199,6 +2281,8 @@ export default function HospedeClubApp() {
                     })}
                   </div>
                 )}
+                  </div>
+                </div>
               </div>
             </main>
       )}

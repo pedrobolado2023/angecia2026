@@ -50,6 +50,7 @@ export interface CuratedHotel {
   clusterId: "cluster-1" | "cluster-2" | "cluster-3";
   accommodationType: "hotel" | "villa";
   stars: number;
+  mealPlanCodes?: string[];
   ratingScore: number;
   reviewsCount: number;
   heroImage: string;
