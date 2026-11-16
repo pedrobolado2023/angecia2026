@@ -72,6 +72,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+const SEARCH_LOADING_MESSAGE = "Buscando os melhores preços para você! Isso pode levar até 30 segundos...";
+
 type ActiveScreen = "home" | "results" | "hotel" | "checkout" | "admin";
 
 const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
@@ -144,7 +146,6 @@ export default function HospedeClubApp() {
   const [hotelbedsError, setHotelbedsError] = useState("");
   const [hotelbedsNotice, setHotelbedsNotice] = useState("");
   const [hotelbedsResult, setHotelbedsResult] = useState<CuratedHotel[]>([]);
-  const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const hotelbedsRequest = useRef<AbortController | null>(null);
   const activeHotelbedsDestination = useRef("RIO,BZI,ADR");
 
@@ -272,7 +273,7 @@ export default function HospedeClubApp() {
       parts.push(`${childrenCount} ${childrenCount === 1 ? "Criança" : "Crianças"}`);
     }
     if (infantsCount > 0) {
-      parts.push(`${infantsCount} ${infantsCount === 1 ? "Bebê" : "Bebês"}`);
+      parts.push(`${infantsCount} ${infantsCount === 1 ? "Infantil" : "Infantis"}`);
     }
     return parts.join(", ");
   }, [adultsCount, childrenCount, infantsCount]);
@@ -626,7 +627,6 @@ export default function HospedeClubApp() {
       setHotelbedsNotice("");
       setHotelbedsResult([]);
       setIsHotelbedsLoading(true);
-      setIsLoadingPhotos(false);
       const checkIn = customCheckIn || checkInDate;
       const checkOut = customCheckOut || checkOutDate;
       const cityId = targetCityId || selectedCityId;
@@ -653,14 +653,13 @@ export default function HospedeClubApp() {
         }));
         if (signal.aborted) return;
         const successful = responses.flatMap((response) => response.status === "fulfilled" ? [response.value] : []);
-        if (!successful.length) throw new Error("Não foi possível consultar a Hotelbeds. Tente pesquisar novamente.");
+        if (!successful.length) throw new Error("Não foi possível concluir a busca. Tente pesquisar novamente.");
 
         const uniqueHotels = new Map<string, any>();
         successful.forEach((result) => result.hotels.forEach((hotel: any) => {
           if (hotel.code && hotel.hospedeClubPricing) uniqueHotels.set(String(hotel.code), hotel);
         }));
         const officialHotels = [...uniqueHotels.values()];
-        setIsLoadingPhotos(true);
         const loadedPhotos = await prepareHotelbedsPhotos(officialHotels.flatMap((hotel) => [
           hotel.heroImage, ...(hotel.gallery || []),
           ...(hotel.rooms || []).flatMap((room: any) => [room.heroImage, ...(room.gallery || [])]),
@@ -724,7 +723,7 @@ export default function HospedeClubApp() {
           };
         });
         if (successful.length < destinationCodes.length || successful.some((result) => result.contentIncomplete)) {
-          setHotelbedsNotice("A Hotelbeds retornou dados incompletos. Você pode repetir a busca para tentar carregar o restante.");
+          setHotelbedsNotice("Algumas informações não foram carregadas. Tente pesquisar novamente.");
         } else if (hotels.some((hotel) => !hotel.heroImage)) {
           setHotelbedsNotice("Alguns hotéis estão sem foto oficial disponível.");
         }
@@ -737,7 +736,6 @@ export default function HospedeClubApp() {
         if (!signal.aborted) setHotelbedsError(err instanceof Error ? err.message : "Não foi possível concluir a consulta.");
       } finally {
         if (!signal.aborted) {
-          setIsLoadingPhotos(false);
           setIsHotelbedsLoading(false);
         }
       }
@@ -1732,7 +1730,7 @@ export default function HospedeClubApp() {
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <span className="text-xs font-semibold text-[#182026] block">Adultos</span>
-                            <span className="text-[10px] text-[#5C646B] block">A partir de 13 anos</span>
+                            <span className="text-[10px] text-[#5C646B] block">A partir de 18 anos</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -1761,7 +1759,7 @@ export default function HospedeClubApp() {
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F8F5EE]">
                           <div>
                             <span className="text-xs font-semibold text-[#182026] block">Crianças</span>
-                            <span className="text-[10px] text-[#5C646B] block">3 a 12 anos</span>
+                            <span className="text-[10px] text-[#5C646B] block">6 a 17 anos</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -1789,8 +1787,8 @@ export default function HospedeClubApp() {
                         {/* 3. BEBÊS / INFANTIL */}
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F8F5EE]">
                           <div>
-                            <span className="text-xs font-semibold text-[#182026] block">Bebês / Infantil</span>
-                            <span className="text-[10px] text-[#5C646B] block">0 a 2 anos (berço / cortesia)</span>
+                            <span className="text-xs font-semibold text-[#182026] block">Infantil</span>
+                            <span className="text-[10px] text-[#5C646B] block">0 a 5 anos</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -1859,7 +1857,7 @@ export default function HospedeClubApp() {
                   <div className="mt-4 pt-3 border-t border-[#EAE3D5] flex items-center gap-2 text-xs">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#B8863B] animate-ping shrink-0" />
                     <span className="text-[#9A6D28] font-semibold animate-pulse">
-                      {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
+                      {SEARCH_LOADING_MESSAGE}
                     </span>
                   </div>
                 )}
@@ -2070,31 +2068,10 @@ export default function HospedeClubApp() {
                 </div>
                 <HotelSearchFilters key={resultsUrl(submittedSearch)} criteria={submittedSearch} earliestDate={getTodayString()}
                   onSearch={(criteria) => executeHotelbedsSearch(criteria)} />
-                {/* BANNER DE CARREGAMENTO AO VIVO NA HOME */}
                 {isHotelbedsLoading && (
-                  <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF7F2] via-white to-[#FAF7F2] border border-[#B8863B]/40 shadow-sm animate-pulse flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-10 h-10 rounded-full bg-[#B8863B]/10 flex items-center justify-center shrink-0">
-                        <RefreshCw className="w-5 h-5 text-[#B8863B] animate-spin" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-[#182026]">
-                            {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
-                          </h4>
-                          <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            Pesquisando
-                          </span>
-                        </div>
-                        <p className="text-xs text-[#5C646B] mt-0.5">
-                          Consultando tarifas oficiais de membro, quartos disponíveis e fotos em alta definição.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="hidden md:flex items-center gap-2 text-xs text-[#9A6D28] font-medium shrink-0">
-                      <span className="w-2 h-2 rounded-full bg-[#B8863B] animate-ping" />
-                      <span>Atualizando catálogo</span>
-                    </div>
+                  <div role="status" className="mb-6 flex items-center gap-3 rounded-2xl border border-[#B8863B]/40 bg-white p-4 text-sm font-semibold text-[#182026]">
+                    <RefreshCw aria-hidden="true" className="h-5 w-5 shrink-0 animate-spin text-[#B8863B]" />
+                    {SEARCH_LOADING_MESSAGE}
                   </div>
                 )}
 
@@ -2447,7 +2424,7 @@ export default function HospedeClubApp() {
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <span className="text-xs font-semibold text-[#182026] block">Crianças</span>
-                          <span className="text-[10px] text-[#5C646B]">De 0 a 17 anos</span>
+                          <span className="text-[10px] text-[#5C646B]">6 a 17 anos</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -2479,6 +2456,21 @@ export default function HospedeClubApp() {
                           </button>
                         </div>
                       </div>
+
+                      <label className="flex items-center justify-between gap-2">
+                        <span>
+                          <span className="block text-xs font-semibold text-[#182026]">Infantil</span>
+                          <span className="text-[10px] text-[#5C646B]">0 a 5 anos</span>
+                        </span>
+                        <select value={infantsCount} onChange={(event) => {
+                          const infants = Number(event.target.value);
+                          setInfantsCount(infants);
+                          fetchLiveHotelbedsHotels(activeHotelbedsDestination.current, selectedCityId,
+                            checkInDate, checkOutDate, adultsCount, childrenCount, undefined, selectedHotel.hotelbedsCode, infants);
+                        }} className="rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] px-2 py-1 text-xs">
+                          {[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}
+                        </select>
+                      </label>
 
                       <div className="pt-2 border-t border-[#F0EAE0]">
                         <button
@@ -2595,7 +2587,7 @@ export default function HospedeClubApp() {
               Suítes & Condições de Membro
             </h2>
 
-            {isHotelbedsLoading && <p role="status">{isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando quartos e tarifas na Hotelbeds..."}</p>}
+            {isHotelbedsLoading && <p role="status">{SEARCH_LOADING_MESSAGE}</p>}
             {hotelbedsError && <p role="alert" className="text-[#B83B2B]">{hotelbedsError}</p>}
             {hotelbedsNotice && <p role="status" className="text-[#9A6D28]">{hotelbedsNotice}</p>}
             {!isHotelbedsLoading && !hotelbedsError && (!canBookSelectedHotel || !selectedHotel.rooms.length) &&

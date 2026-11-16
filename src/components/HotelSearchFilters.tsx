@@ -14,9 +14,9 @@ export type SearchCriteria = {
 
 const fieldClass = "w-full rounded-lg border border-[#E2D9C8] bg-[#FAF7F2] px-3 py-2 text-sm text-[#182026]";
 const guestFields = [
-  { key: "adults", label: "Adultos", min: 1, max: 8 },
-  { key: "children", label: "Crianças", min: 0, max: 4 },
-  { key: "infants", label: "Bebês", min: 0, max: 4 },
+  { key: "adults", label: "Adultos (18+)", min: 1, max: 8 },
+  { key: "children", label: "Crianças (6 a 17)", min: 0, max: 4 },
+  { key: "infants", label: "Infantil (0 a 5)", min: 0, max: 4 },
 ] as const;
 
 export function HotelSearchFilters({ criteria, earliestDate, onSearch }: {
@@ -43,7 +43,7 @@ export function HotelSearchFilters({ criteria, earliestDate, onSearch }: {
         setError("");
         onSearch({ ...draft, query });
       }}>
-      <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-3 lg:grid-cols-[2fr_1.15fr_1.15fr_repeat(3,minmax(0,0.65fr))_auto]">
+      <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-3 lg:grid-cols-[2fr_1.2fr_1.2fr_repeat(3,minmax(0,0.9fr))_auto]">
         <label className="col-span-2 block text-xs font-medium sm:col-span-3 lg:col-span-1">
           Destino ou hotel
           <input id="result-destination" className={fieldClass} value={draft.query} required maxLength={120}
