@@ -527,6 +527,7 @@ export async function searchHotelbedsAvailability(params: {
   occupancies?: HotelbedsOccupancy[];
   destinationCode?: string;
   hotelCodes?: (number | string)[];
+  includeContent?: boolean;
 }): Promise<HotelbedsAvailabilityResponse> {
   const cfg = getHotelbedsConfig();
   const occupancies = params.occupancies || [{ rooms: 1, adults: 2, children: 0 }];
@@ -596,7 +597,7 @@ export async function searchHotelbedsAvailability(params: {
     const codes = [...new Set<number>(hotelsList.map((h: any) => h.code))];
     const [liveRates, contentMap] = await Promise.all([
       fetchLiveExchangeRates(),
-      fetchHotelbedsContent(codes),
+      params.includeContent === false ? Promise.resolve({} as Record<number, HotelbedsContentData>) : fetchHotelbedsContent(codes),
     ]);
 
     const mappedHotels: HotelbedsHotelResult[] = hotelsList.map((h: any) => {
@@ -680,7 +681,7 @@ export async function searchHotelbedsAvailability(params: {
       checkIn: data.hotels?.checkIn || params.checkIn,
       checkOut: data.hotels?.checkOut || params.checkOut,
       total: mappedHotels.length,
-      contentIncomplete: codes.some((code) => !contentMap[code]) ||
+      contentIncomplete: (params.includeContent !== false && codes.some((code) => !contentMap[code])) ||
         Number(data.hotels?.total || 0) > mappedHotels.length,
       hotels: mappedHotels,
     };
@@ -808,7 +809,7 @@ export async function createHotelbedsBooking(booking: {
       ],
       clientReference: booking.clientReference,
       remark: booking.remark || "Reserva Hóspede Club",
-      tolerance: 2.0,
+      tolerance: 0,
     };
 
     // Certificação Hotelbeds: Timeout mínimo de 60 segundos
@@ -835,7 +836,10 @@ export async function createHotelbedsBooking(booking: {
       };
     }
 
-    const hbRef = data.booking?.reference || `HB-${Date.now()}`;
+    const hbRef = data.booking?.reference;
+    if (!hbRef || data.booking?.status !== "CONFIRMED") {
+      return { ok: false, isSimulation: false, error: "A Hotelbeds não confirmou a reserva." };
+    }
     const supplierRemarks =
       data.booking?.supplier?.remarks ||
       `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company. VAT: B-60292723. Reference: ${hbRef}`;

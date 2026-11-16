@@ -1,422 +1,102 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CURATED_HOTELS, CuratedHotel } from "@/data/vellutoCatalog";
-import { calculateVellutoPricing } from "@/lib/pricingEngine";
-import { upsertCustomerProfile, recordCustomerActivity } from "@/lib/customerStore";
-import { processMercadoPagoPayment } from "@/lib/mercadopago";
 import { authenticatedCustomer } from "@/lib/customerSession";
-import { ensurePostgresTables, saveBookingToPostgres } from "@/lib/postgres";
-import { createHotelbedsBooking } from "@/lib/hotelbeds";
+import { CheckoutError, checkoutDb, checkoutResponse, createCheckoutQuote, getCheckoutOrder, isOrderId, reconcileCheckoutPayment, type CheckoutOrder } from "@/lib/checkout";
+import { checkoutPaymentConfigured, createMercadoPagoPayment, findMercadoPagoPayment, getMercadoPagoPayment, MercadoPagoError } from "@/lib/mercadopago";
 
-// Memória em tempo de execução para controle atômico de estoque (Anti-Overbooking Gate 3)
-const runtimeInventory: Record<string, number> = {};
-CURATED_HOTELS.forEach((h) => {
-  runtimeInventory[h.id] = h.omnibeesAvailableRooms;
-});
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status, headers: { "Cache-Control": "private, no-store" } });
+}
 
 export async function POST(request: NextRequest) {
-  const startMs = performance.now();
+  const customer = await authenticatedCustomer(request);
+  if (!customer) return json({ error: "Entre na sua conta para reservar." }, 401);
+  if (!checkoutPaymentConfigured()) return json({ error: "Pagamento temporariamente indisponível." }, 503);
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || ["cardNumber", "cardExpiry", "cardCvv", "securityCode"].some((field) => Object.hasOwn(body, field))) {
+    return json({ error: "Dados de pagamento inválidos." }, 400);
+  }
+
   try {
-    const customer = await authenticatedCustomer(request);
-    if (!customer) return NextResponse.json({ error: "Entre na sua conta para reservar." }, { status: 401 });
-    const body = await request.json();
-    const {
-      hotelId,
-      roomId,
-      nights = 2,
-      guests = 2,
-      adults = 2,
-      children = 0,
-      infants = 0,
-      checkInDate = "2026-11-13",
-      paymentModality = "PIX",
-      installments = 1,
-
-      // Integração Hotelbeds APItude
-      hotelName,
-      hotelbedsCode,
-      rateKey,
-      roomName,
-      boardName,
-      netRate,
-      barRate,
-      hotelAddress,
-
-      // Dados do Titular (Hóspede Principal)
-      primaryFirstName,
-      primaryLastName,
-      primaryEmail,
-      primaryEmailConfirm,
-      primaryCountry = "Brasil",
-      primaryCpf,
-      primaryWhatsapp,
-      primaryBirthDate,
-
-      // Dados do Segundo Adulto
-      secondGuestFirstName,
-      secondGuestLastName,
-      secondGuestCpf,
-      secondGuestBirthDate,
-
-      // Dados do Cartão Mercado Pago (opcionais)
-      cardToken,
-      cardIssuerId,
-      paymentMethodId,
-
-      // Fallback legado para compatibilidade com testes anteriores
-      guestName,
-      guestEmail,
-      guestWhatsapp,
-      cityOrigin = "São Paulo (SP)",
-      voucherCode,
-    } = body;
-
-    // Normalização dos nomes e emails
-    const resolvedFirstName =
-      primaryFirstName?.trim() || guestName?.split(" ")[0] || "Hóspede";
-    const resolvedLastName =
-      primaryLastName?.trim() ||
-      guestName?.split(" ").slice(1).join(" ") ||
-      "Titular";
-    const resolvedEmail = customer.email.toLowerCase();
-    if (primaryEmail && (typeof primaryEmail !== "string" || primaryEmail.trim().toLowerCase() !== resolvedEmail)) {
-      return NextResponse.json({ error: "Use o e-mail da sua conta para reservar." }, { status: 400 });
+    if (body.action === "quote") {
+      if (body.paymentModality === "CARD" && !process.env.MERCADOPAGO_PUBLIC_KEY) {
+        return json({ error: "Cartão temporariamente indisponível. Se preferir, selecione Pix." }, 503);
+      }
+      const order = await createCheckoutQuote(customer, body);
+      return json({ ...checkoutResponse(order), publicKey: order.payload.method === "card" ? process.env.MERCADOPAGO_PUBLIC_KEY : undefined });
     }
-    if (!(await ensurePostgresTables())) {
-      return NextResponse.json({ error: "Reservas temporariamente indisponíveis." }, { status: 503 });
+    if (body.action !== "pay" || !isOrderId(body.orderId)) return json({ error: "Cotação inválida." }, 400);
+    const order = await getCheckoutOrder(body.orderId, customer);
+    if (!order) return json({ error: "Cotação não encontrada." }, 404);
+    if (order.state !== "quoted") return json(checkoutResponse(order));
+    if (new Date(order.expires_at).getTime() <= Date.now()) return json({ error: "Cotação expirada. Confira novamente o preço." }, 409);
+    let card;
+    if (order.payload.method === "card") {
+      const { token, methodId, issuerId } = body.card || {};
+      if (typeof token !== "string" || !/^[a-z0-9_-]{10,256}$/i.test(token) ||
+          typeof methodId !== "string" || !/^[a-z0-9_-]{1,32}$/i.test(methodId) || methodId === "pix" ||
+          (issuerId !== undefined && (typeof issuerId !== "string" || !/^\d{1,20}$/.test(issuerId)))) {
+        return json({ error: "Confira os dados do cartão no formulário." }, 400);
+      }
+      card = { token, methodId, issuerId };
     }
-    const resolvedWhatsapp =
-      primaryWhatsapp?.trim() || guestWhatsapp?.trim() || "+55 (11) 99812-4400";
-    const resolvedCpf = primaryCpf?.trim() || "000.000.000-00";
-    const fullName = `${resolvedFirstName} ${resolvedLastName}`;
-
-    // Validação de confirmação de e-mail (quando enviada)
-    if (
-      primaryEmail &&
-      primaryEmailConfirm &&
-      primaryEmail.trim().toLowerCase() !== primaryEmailConfirm.trim().toLowerCase()
-    ) {
-      return NextResponse.json(
-        { error: "A confirmação de e-mail não coincide com o e-mail informado." },
-        { status: 400 }
-      );
-    }
-
-    // 1. Resolução do Hotel (Catálogo Curado ou Hotelbeds APItude)
-    let hotel: CuratedHotel | undefined = CURATED_HOTELS.find((h) => h.id === hotelId);
-
-    const isHotelbedsTarget =
-      String(hotelId).startsWith("hotelbeds-") || Boolean(hotelbedsCode) || Boolean(rateKey);
-
-    if (!hotel && isHotelbedsTarget) {
-      const hbNetRate = Number(netRate || 580);
-      const hbBarRate = Number(barRate || hbNetRate * 1.25);
-      hotel = {
-        id: hotelId || `hotelbeds-${hotelbedsCode || "prop"}`,
-        name: hotelName || "Hotel Selecionado Hotelbeds",
-        subtitle: `${boardName || "Café da Manhã Incluso"} • Tarifa de Membro Hóspede Club`,
-        cityId: "rio",
-        cityName: body.cityName || "Rio de Janeiro",
-        stateCode: "RJ",
-        neighborhood: body.neighborhood || "Zona Nobre",
-        clusterId: "cluster-1",
-        accommodationType: "hotel",
-        stars: 5,
-        ratingScore: 9.4,
-        reviewsCount: 220,
-        heroImage: body.heroImage || "",
-        gallery: [],
-        netRate: hbNetRate,
-        barRate: hbBarRate,
-        omnibeesAvailableRooms: 3,
-        scarcityLabel: boardName || "Café da Manhã Incluso",
-        liveViewersCount: 16,
-        lastBookingNotice: "Tarifa com disponibilidade confirmada em tempo real",
-        isFlashDeal: false,
-        flashDealRemainingSeconds: 0,
-        omnibeesChannelCode: `HB-${hotelbedsCode || "LIVE"}`,
-        hotelbedsCode: hotelbedsCode,
-        primaryLandmarkDistance: hotelAddress || "Localização Privilegiada",
-        landmarkDistances: [],
-        curationHighlights: [boardName || "Café da manhã incluso", "Emissão Imediata de Voucher Oficial"],
-        rooms: [
-          {
-            id: roomId || `hb-rm-${hotelbedsCode || 1}`,
-            name: roomName || "Quarto Superior Executivo",
-            sizeM2: 38,
-            viewLabel: "Vista Panorâmica",
-            bedConfig: "1 Cama King Size",
-            netRate: hbNetRate,
-            barRate: hbBarRate,
-            omnibeesAvailableCount: 3,
-            minStay: 1,
-            boardBasis: body.boardName || "Café da Manhã Incluso",
-            highlights: ["Tarifa Sincronizada", "Voucher Imediato"],
-          },
-        ],
-      };
-    }
-
-    if (!hotel) {
-      return NextResponse.json({ error: "Hotel não encontrado no catálogo." }, { status: 404 });
-    }
-
-    let currentStock = runtimeInventory[hotel.id] ?? hotel.omnibeesAvailableRooms;
-    if (hotel.stopSell) {
-      return NextResponse.json(
-        {
-          status: "OVERBOOKING_PREVENTED_BY_AGENT_03",
-          error:
-            "[GATE 3 ANTI-OVERBOOKING BLOCK] Hotel em Stop Sell temporário.",
-          availableRooms: 0,
-        },
-        { status: 409 }
-      );
-    }
-
-    // Se o estoque em memória zerou por testes contínuos, renova dinamicamente para não travar a experiência do usuário
-    if (currentStock <= 0) {
-      currentStock = Math.max(3, hotel.omnibeesAvailableRooms || 3);
-      runtimeInventory[hotel.id] = currentStock;
-    }
-
-    const room = hotel.rooms.find((r) => r.id === roomId) || hotel.rooms[0];
-    const pricing = calculateVellutoPricing(
-      room.netRate,
-      room.barRate,
-      0.15,
-      hotel.cleaningFee || 0,
-      hotel.securityDeposit || 0
+    const db = await checkoutDb();
+    const { rows: [claimed] } = await db.query<CheckoutOrder>(
+      "UPDATE checkout_orders SET state = 'paying', updated_at = NOW() WHERE id = $1 AND state = 'quoted' AND expires_at > NOW() RETURNING *",
+      [order.id]
     );
+    if (!claimed) {
+      const current = await getCheckoutOrder(order.id, customer);
+      return current && current.state !== "quoted" ? json(checkoutResponse(current)) :
+        json({ error: "Cotação expirada. Confira novamente o preço." }, 409);
+    }
+    try {
+      const booking = claimed.payload.booking;
+      const payment = await createMercadoPagoPayment({
+        orderId: claimed.id, amountCents: claimed.amount_cents,
+        description: `Hóspede Club — ${booking.hotelName} (${booking.nightsCount} noites)`.slice(0, 200),
+        method: claimed.payload.method, installments: booking.installments || 1,
+        email: booking.primaryEmail, cpf: booking.primaryCpf, card,
+      });
+      const reconciled = await reconcileCheckoutPayment(payment);
+      return json(checkoutResponse(reconciled || claimed));
+    } catch (error) {
+      if (error instanceof MercadoPagoError && [400, 401, 403, 404, 422].includes(error.status)) {
+        const { rows: [rejected] } = await db.query<CheckoutOrder>(
+          "UPDATE checkout_orders SET state = 'rejected', updated_at = NOW() WHERE id = $1 AND state = 'paying' RETURNING *", [claimed.id]
+        );
+        if (rejected) return json(checkoutResponse(rejected));
+      }
+      console.warn("[Checkout] Cobrança aguardando reconciliação.", claimed.id);
+      return json(checkoutResponse(claimed), 202);
+    }
+  } catch (error) {
+    if (error instanceof CheckoutError) return json({ error: error.message }, error.status);
+    console.error("[Checkout] Não foi possível concluir a operação.");
+    return json({ error: "Checkout temporariamente indisponível." }, 503);
+  }
+}
 
-    // Trava atômica de 1 unidade no inventário
-    runtimeInventory[hotel.id] = Math.max(0, currentStock - 1);
-
-    const bookingId = `BK-${Date.now()}`;
-
-    // Processamento da reserva no canal Hotelbeds APItude quando aplicável
-    let hotelbedsBookingResult: any = null;
-    let resolvedVoucherCode = voucherCode;
-
-    if (isHotelbedsTarget) {
+export async function GET(request: NextRequest) {
+  const customer = await authenticatedCustomer(request);
+  if (!customer) return json({ error: "Entre na sua conta." }, 401);
+  const id = request.nextUrl.searchParams.get("orderId");
+  if (!isOrderId(id)) return json({ error: "Pedido inválido." }, 400);
+  try {
+    const order = await getCheckoutOrder(id, customer);
+    if (!order) return json({ error: "Pedido não encontrado." }, 404);
+    if (order.state === "paying" || order.state === "pending") {
       try {
-        const hbPaxes = [
-          {
-            name: resolvedFirstName,
-            surname: resolvedLastName,
-            type: "AD" as const,
-          },
-          ...(secondGuestFirstName
-            ? [
-                {
-                  name: secondGuestFirstName,
-                  surname: secondGuestLastName || resolvedLastName,
-                  type: "AD" as const,
-                },
-              ]
-            : []),
-          ...(children > 0
-            ? Array.from({ length: children }).map((_, cIdx) => ({
-                name: `Criança ${cIdx + 1}`,
-                surname: resolvedLastName,
-                type: "CH" as const,
-                age: 7,
-              }))
-            : []),
-        ];
-
-        hotelbedsBookingResult = await createHotelbedsBooking({
-          rateKey: rateKey || `HB-RATE-${Date.now()}`,
-          clientReference: bookingId,
-          holder: {
-            name: resolvedFirstName,
-            surname: resolvedLastName,
-          },
-          paxes: hbPaxes,
-          remark: `Hóspede Club — ${fullName}`,
-        });
-
-        if (hotelbedsBookingResult?.bookingReference) {
-          resolvedVoucherCode = hotelbedsBookingResult.bookingReference;
+        const payment = order.payment_id ? await getMercadoPagoPayment(order.payment_id) : await findMercadoPagoPayment(id);
+        if (payment) {
+          const updated = await reconcileCheckoutPayment(payment);
+          if (updated?.id === order.id) return json(checkoutResponse(updated));
         }
-      } catch (hbErr) {
-        console.warn("[Hotelbeds Booking] Aviso na integração APItude:", hbErr);
+      } catch {
+        // A notificação também pode conciliar o pagamento em seguida.
       }
     }
-
-    const generatedVoucher =
-      resolvedVoucherCode || `HC-${Math.floor(100000 + Math.random() * 900000)}-OMNI`;
-
-    const extraFees = (hotel.cleaningFee || 0) + (hotel.securityDeposit || 0);
-    const chosenInstallment = Math.min(11, Math.max(0, (installments || 1) - 1));
-    const totalPaid =
-      paymentModality.toUpperCase() === "PIX"
-        ? pricing.pix.pixPrice * nights + extraFees
-        : pricing.creditCard.installments[chosenInstallment].totalCharged * nights +
-          extraFees;
-
-    const cashbackEarned = 0;
-
-    // 1. Processamento de Pagamento no Mercado Pago
-    const mpResult = await processMercadoPagoPayment({
-      amount: totalPaid,
-      description: `Hóspede Club — Reserva ${hotel.name} (${nights} noites)`,
-      paymentMethod: paymentModality.toUpperCase() === "PIX" ? "pix" : "card",
-      installments: installments || 1,
-      payer: {
-        email: resolvedEmail,
-        firstName: resolvedFirstName,
-        lastName: resolvedLastName,
-        cpf: resolvedCpf,
-        phone: resolvedWhatsapp,
-      },
-      cardToken,
-      cardIssuerId,
-      paymentMethodId,
-    });
-
-    // 2. Persistência Segura no Banco de Dados PostgreSQL (Easypanel / Cloud)
-    let pgPersistResult: { success: boolean; error?: string } = { success: false, error: "" };
-    try {
-      pgPersistResult = await saveBookingToPostgres({
-        ownerMemberCode: customer.id,
-        hotelbedsReference: hotelbedsBookingResult?.ok && !hotelbedsBookingResult.isSimulation
-          ? hotelbedsBookingResult.bookingReference : undefined,
-        bookingCode: bookingId,
-        voucherCode: generatedVoucher,
-        hotelId: hotel.id,
-        hotelName: hotel.name,
-        roomId: room.id,
-        roomName: room.name,
-        checkInDate,
-        nightsCount: nights,
-        guestsCount: guests,
-        totalAmountBRL: totalPaid,
-
-        // Titular
-        primaryFirstName: resolvedFirstName,
-        primaryLastName: resolvedLastName,
-        primaryEmail: resolvedEmail,
-        primaryCountry,
-        primaryCpf: resolvedCpf,
-        primaryWhatsapp: resolvedWhatsapp,
-        primaryBirthDate,
-
-        // Segundo Adulto
-        secondGuestFirstName,
-        secondGuestLastName,
-        secondGuestCpf,
-        secondGuestBirthDate,
-
-        // Pagamento
-        paymentMethod: paymentModality.toUpperCase() === "PIX" ? "PIX" : "CREDIT_CARD",
-        paymentStatus: mpResult.status === "approved" ? "APPROVED" : "PENDING",
-        installments: installments || 1,
-        mpPaymentId: mpResult.paymentId,
-        mpStatus: mpResult.status,
-        mpQrCode: mpResult.pix?.qrCode,
-        mpQrCodeBase64: mpResult.pix?.qrCodeBase64,
-        mpTicketUrl: mpResult.pix?.ticketUrl,
-      });
-    } catch (pgErr: unknown) {
-      console.warn("[PostgreSQL] Gravação assíncrona com aviso:", pgErr);
-    }
-
-    // 3. Persistência de Redundância no CRM Local (/data/customers_crm.json)
-    if (!resolvedEmail.includes("gate3@")) {
-      const savedMember = upsertCustomerProfile({
-        fullName,
-        email: resolvedEmail,
-        whatsapp: resolvedWhatsapp,
-        cityOrigin,
-        preferredDestinations: [hotel.cityName],
-        authMethod: "Checkout Direto",
-        marketingOptIn: true,
-      });
-
-      recordCustomerActivity({
-        customerId: savedMember.id,
-        email: savedMember.email,
-        activityType: "BOOKING_CONFIRMED",
-        payload: {
-          bookingId,
-          voucherCode: generatedVoucher,
-          hotelId: hotel.id,
-          hotelName: hotel.name,
-          roomName: room.name,
-          checkInDate,
-          nights,
-          guests,
-          paymentMethod: paymentModality.toUpperCase() === "PIX" ? "PIX" : "CARD",
-          totalPaid,
-          cashbackEarned,
-          mpPaymentId: mpResult.paymentId,
-          mpStatus: mpResult.status,
-          postgresPersisted: pgPersistResult.success,
-        },
-      });
-    }
-
-    const elapsedMs = Math.round((performance.now() - startMs) * 100) / 100;
-
-    return NextResponse.json({
-      status: "INVENTORY_LOCKED_AWAITING_WEBHOOK",
-      bookingId,
-      voucherCode: generatedVoucher,
-      responseTimeMs: elapsedMs,
-      remainingRoomsAfterLock: runtimeInventory[hotel.id],
-      stopSellTriggered: runtimeInventory[hotel.id] === 0,
-      guest: {
-        fullName,
-        firstName: resolvedFirstName,
-        lastName: resolvedLastName,
-        email: resolvedEmail,
-        cpf: resolvedCpf,
-        country: primaryCountry,
-        birthDate: primaryBirthDate,
-      },
-      secondGuest: secondGuestFirstName
-        ? {
-            firstName: secondGuestFirstName,
-            lastName: secondGuestLastName,
-            cpf: secondGuestCpf,
-            birthDate: secondGuestBirthDate,
-          }
-        : null,
-      mercadoPago: {
-        paymentId: mpResult.paymentId,
-        status: mpResult.status,
-        paymentMethod: mpResult.paymentMethod,
-        isSimulation: mpResult.isSimulation,
-        message: mpResult.message,
-        pix: mpResult.pix,
-        card: mpResult.card,
-      },
-      postgres: {
-        saved: pgPersistResult.success,
-        error: pgPersistResult.error || null,
-      },
-      supplierRemarks:
-        hotelbedsBookingResult?.supplierRemarks ||
-        (isHotelbedsTarget
-          ? `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company, details of which can be provided upon request. VAT: B-60292723 Reference: ${generatedVoucher}`
-          : undefined),
-      hotelbeds: hotelbedsBookingResult,
-      financialAudit: {
-        nights,
-        paymentModality,
-        installments: installments || 1,
-        totalCharged: totalPaid,
-        netRatePerNight: pricing.netRate,
-        cleaningFeeSegregated: pricing.villaFees.cleaningFee,
-        securityDepositSegregated: pricing.villaFees.securityDeposit,
-        guaranteedNetMarginPercent:
-          paymentModality.toUpperCase() === "PIX"
-            ? pricing.pix.netMarginOnNetPercent
-            : pricing.creditCard.installments[chosenInstallment].netMarginOnNetPercent,
-      },
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Erro ao processar reserva.";
-    return NextResponse.json({ status: "ERROR", error: message }, { status: 400 });
+    return json(checkoutResponse(order));
+  } catch {
+    return json({ error: "Consulta temporariamente indisponível." }, 503);
   }
 }

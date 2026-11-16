@@ -184,6 +184,21 @@ export async function ensurePostgresTables(): Promise<boolean> {
     CREATE INDEX IF NOT EXISTS idx_customers_cpf ON customers(cpf);
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS owner_member_code VARCHAR(120);
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS hotelbeds_reference VARCHAR(120);
+    CREATE TABLE IF NOT EXISTS checkout_orders (
+      id UUID PRIMARY KEY,
+      customer_id VARCHAR(120) NOT NULL,
+      customer_email VARCHAR(254) NOT NULL,
+      state VARCHAR(24) NOT NULL,
+      amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+      payload JSONB NOT NULL,
+      payment_id VARCHAR(80) UNIQUE,
+      payment JSONB,
+      voucher VARCHAR(120),
+      supplier_remarks TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     CREATE INDEX IF NOT EXISTS idx_bookings_voucher ON bookings(voucher_code);
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
   `;

@@ -11,6 +11,7 @@ import {
   CuratedHotel,
   RoomCategory,
 } from "@/data/vellutoCatalog";
+import { tokenizeCard } from "@/lib/mercadoPagoCard";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { isValidCPF } from "@/lib/cpfValidator";
 import { prepareHotelbedsPhotos } from "@/lib/hotelbedsPhotos";
@@ -312,6 +313,11 @@ export default function HospedeClubApp() {
     [selectedHotel, selectedRoomId]
   );
 
+  const [checkoutQuote, setCheckoutQuote] = useState<{ orderId: string; amount: number; fingerprint: string; publicKey?: string } | null>(null);
+  const [activeOrderId, setActiveOrderId] = useState("");
+  const [checkoutState, setCheckoutState] = useState("");
+  const [confirmedStay, setConfirmedStay] = useState<{ hotelName: string; roomName: string; checkIn: string; checkOut: string; holder: string } | null>(null);
+  const [extraGuestDetails, setExtraGuestDetails] = useState<Record<string, { name: string; surname: string; age: string }>>({});
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "card">("pix");
   const [selectedInstallments, setSelectedInstallments] = useState<number>(6);
 
@@ -686,6 +692,8 @@ export default function HospedeClubApp() {
         const city = DESTINATION_CITIES.find((item) => item.id === cityId);
         const photos = (hero: string | undefined, gallery: string[] | undefined) =>
           [...new Set([hero, ...(gallery || [])])].filter((url): url is string => Boolean(url && loadedPhotos.has(url)));
+        const stayNights = Math.max(1, (Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
+        const perNight = (amount: number) => Math.round((amount / stayNights) * 100) / 100;
         const hotels: CuratedHotel[] = officialHotels.map((hotel) => {
           const gallery = photos(hotel.heroImage, hotel.gallery);
           const { netRate, barRate } = hotel.hospedeClubPricing;
@@ -709,8 +717,8 @@ export default function HospedeClubApp() {
             reviewsCount: 0,
             heroImage: gallery[0] || "",
             gallery,
-            netRate,
-            barRate,
+            netRate: perNight(netRate),
+            barRate: perNight(barRate),
             omnibeesAvailableRooms: hotel.rooms?.[0]?.rates?.[0]?.allotted ?? 1,
             scarcityLabel: hotel.rooms?.[0]?.rates?.[0]?.boardName || "Consulte as tarifas disponíveis",
             liveViewersCount: 0,
@@ -726,12 +734,13 @@ export default function HospedeClubApp() {
               const roomPhotos = photos(room.heroImage, room.gallery);
               return {
                 id: `hb-rm-${hotel.code}-${room.code}`,
+                hotelbedsRoomCode: room.code,
                 name: room.name || "Quarto",
                 sizeM2: 0,
                 viewLabel: "",
                 bedConfig: "",
-                netRate: rate.net || netRate,
-                barRate: rate.sellingRate || barRate,
+                netRate: perNight(rate.net || netRate),
+                barRate: perNight(rate.sellingRate || barRate),
                 omnibeesAvailableCount: rate.allotted ?? 1,
                 minStay: 1,
                 boardBasis: rate.boardName || "",
@@ -1099,6 +1108,11 @@ export default function HospedeClubApp() {
     setBookingConfirmedVoucher(null);
     setWebhookStatusText(null);
     setCheckoutError(null);
+    setCheckoutQuote(null);
+    setActiveOrderId("");
+    setCheckoutState("");
+    setConfirmedStay(null);
+    setExtraGuestDetails({});
     setMpPixData(null);
     setPostgresSavedStatus(null);
     setActiveScreen("checkout");
@@ -1188,187 +1202,153 @@ export default function HospedeClubApp() {
     return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   };
 
-  const handleConfirmBookingWithWebhook = async () => {
-    setCheckoutError(null);
+  const extraCheckoutGuests = [
+    ...Array.from({ length: Math.max(0, adultsCount - 2) }, (_, i) => ({ key: `adult-${i}`, label: `Adulto ${i + 3}`, minAge: null, maxAge: null })),
+    ...Array.from({ length: childrenCount }, (_, i) => ({ key: `child-${i}`, label: `Criança ${i + 1}`, minAge: 6, maxAge: 17 })),
+    ...Array.from({ length: infantsCount }, (_, i) => ({ key: `infant-${i}`, label: `Infantil ${i + 1}`, minAge: 0, maxAge: 5 })),
+  ];
+  const selectedRate = (selectedRoom as RoomCategory & { rates?: { rateKey: string; boardCode: string; rateClass: string }[] }).rates?.[0];
+  const quoteRequest = {
+    action: "quote", hotelbedsCode: selectedHotel.hotelbedsCode, roomCode: selectedRoom.hotelbedsRoomCode,
+    rateKey: selectedRate?.rateKey, boardCode: selectedRate?.boardCode, rateClass: selectedRate?.rateClass,
+    adults: adultsCount, children: childrenCount, infants: infantsCount, checkInDate, checkOutDate,
+    paymentModality: paymentMethod === "pix" ? "PIX" : "CARD", installments: selectedInstallments, acceptedTerms,
+    primaryFirstName, primaryLastName, primaryEmail, primaryEmailConfirm, primaryCountry, primaryCpf,
+    primaryWhatsapp, primaryBirthDate, secondGuestFirstName, secondGuestLastName,
+    extraGuests: extraCheckoutGuests.map(({ key, minAge }) => {
+      const detail = extraGuestDetails[key];
+      return {
+        name: detail?.name || "", surname: detail?.surname || "",
+        age: minAge !== null && detail?.age !== undefined && detail.age !== "" ? Number(detail.age) : undefined,
+      };
+    }),
+  };
+  const quoteFingerprint = JSON.stringify(quoteRequest);
+  const currentCheckoutQuote = checkoutQuote?.fingerprint === quoteFingerprint ? checkoutQuote : null;
+  const customerCheckoutStorageKey = loggedCustomer ? `hospede-checkout-${loggedCustomer.id}` : "";
 
-    // 0. Validação Obrigatória dos Termos e LGPD
-    if (!acceptedTerms) {
-      setCheckoutError(
-        "Atenção: É obrigatório ler e aceitar os Termos e Condições, as Políticas de Cancelamento e a Proteção de Dados (LGPD) para prosseguir com a reserva."
-      );
-      const el = document.getElementById("terms-checkbox-section");
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-
-    // 1. Validações do Titular
-    if (!primaryFirstName.trim() || !primaryLastName.trim()) {
-      setCheckoutError("Por favor, preencha o Nome e Último Nome do titular.");
-      return;
-    }
-    if (!primaryEmail.trim()) {
-      setCheckoutError("Por favor, informe o E-mail do titular.");
-      return;
-    }
-    if (primaryEmail.trim().toLowerCase() !== primaryEmailConfirm.trim().toLowerCase()) {
-      setCheckoutError("A confirmação de e-mail não confere com o e-mail digitado.");
-      return;
-    }
-    if (!primaryCpf.trim() || !isValidCPF(primaryCpf)) {
-      setCheckoutError("O CPF do titular é inválido. Por favor, informe um CPF válido com 11 dígitos verificadores.");
-      return;
-    }
-    if (secondGuestCpf.trim() && !isValidCPF(secondGuestCpf)) {
-      setCheckoutError("O CPF do segundo adulto é inválido. Por favor, verifique os dígitos informados.");
-      return;
-    }
-    if (!primaryWhatsapp.trim() || primaryWhatsapp.replace(/\D/g, "").length < 10) {
-      setCheckoutError("Por favor, informe o WhatsApp do titular com DDD.");
-      return;
-    }
-    if (!primaryBirthDate) {
-      setCheckoutError("Por favor, informe a Data de Nascimento do titular.");
-      return;
-    }
-
-    // 2. Validações de Cartão de Crédito
-    if (paymentMethod === "card") {
-      if (!cardNumber.trim() || cardNumber.replace(/\D/g, "").length < 13) {
-        setCheckoutError("Por favor, informe o número completo do cartão de crédito.");
-        return;
-      }
-      if (!cardHolder.trim()) {
-        setCheckoutError("Por favor, informe o nome impresso no cartão de crédito.");
-        return;
-      }
-      if (!cardExpiry.trim() || cardExpiry.replace(/\D/g, "").length < 4) {
-        setCheckoutError("Por favor, informe a validade do cartão (MM/AA).");
-        return;
-      }
-      if (!cardCvv.trim() || cardCvv.replace(/\D/g, "").length < 3) {
-        setCheckoutError("Por favor, informe o código de segurança (CVV).");
-        return;
-      }
-    }
-
-    setIsProcessingCheckout(true);
-
-    try {
-      const generatedVoucher = `HC-${Math.floor(100000 + Math.random() * 900000)}-OMNI`;
-
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          hotelId: selectedHotel.id,
-          roomId: selectedRoom.id,
-          hotelName: selectedHotel.name,
-          hotelbedsCode: (selectedHotel as any).hotelbedsCode,
-          rateKey: (selectedRoom as any).rates?.[0]?.rateKey,
-          roomName: selectedRoom.name,
-          boardName: (selectedHotel as any).scarcityLabel || (selectedRoom as any).rates?.[0]?.boardName,
-          netRate: selectedRoom.netRate,
-          barRate: selectedRoom.barRate,
-          hotelAddress: (selectedHotel as any).address || (selectedHotel as any).primaryLandmarkDistance,
-          cityName: selectedHotel.cityName,
-          nights: nightsCount,
-          guests: totalGuestsCount,
-          adults: adultsCount,
-          children: childrenCount,
-          infants: infantsCount,
-          checkInDate,
-          checkOutDate,
-          paymentModality: paymentMethod === "pix" ? "PIX" : "CARD",
-          installments: selectedInstallments,
-
-          // Titular
-          primaryFirstName,
-          primaryLastName,
-          primaryEmail,
-          primaryEmailConfirm,
-          primaryCountry,
-          primaryCpf,
-          primaryWhatsapp,
-          primaryBirthDate,
-
-          // Segundo Adulto
-          secondGuestFirstName,
-          secondGuestLastName,
-          secondGuestCpf,
-          secondGuestBirthDate,
-
-          // Cartão de Crédito
-          cardNumber: cardNumber.replace(/\D/g, ""),
-          cardHolder,
-          cardExpiry,
-          cardCvv,
-
-          voucherCode: generatedVoucher,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Erro ao processar reserva.");
-      }
-
-      setBookingConfirmedVoucher(data.voucherCode || generatedVoucher);
+  const applyCheckoutStatus = useCallback((data: {
+    state: string; method?: "pix" | "card"; voucherCode?: string; supplierRemarks?: string;
+    stay?: { hotelName: string; roomName: string; checkIn: string; checkOut: string; holder: string };
+    mercadoPago?: { pix?: { qrCode: string; qrCodeBase64: string; ticketUrl?: string; expiresAt?: string } };
+  }) => {
+    const { state, voucherCode } = data;
+    if (data.method) setPaymentMethod(data.method);
+    setCheckoutState(state);
+    setMpPixData(data.mercadoPago?.pix || null);
+    if (state === "confirmed" && voucherCode) {
+      setBookingConfirmedVoucher(voucherCode);
+      setConfirmedStay(data.stay || null);
       setBookingSupplierRemarks(data.supplierRemarks || null);
-      setPostgresSavedStatus(Boolean(data.postgres?.saved));
+      setPostgresSavedStatus(true);
+      setWebhookStatusText("Pagamento aprovado e reserva confirmada.");
+    } else if (state === "pending") {
+      setWebhookStatusText("Aguardando a aprovação do pagamento. A reserva será confirmada após a aprovação.");
+    } else if (state === "confirming") {
+      setWebhookStatusText("Pagamento aprovado. Estamos confirmando a reserva.");
+    } else if (state === "paying") {
+      setWebhookStatusText("Aguardando a resposta do pagamento. Aguarde a atualização antes de tentar pagar novamente.");
+    } else if (state === "review") {
+      setWebhookStatusText("O pedido precisa de verificação. Entre em contato com o atendimento e informe o código do pedido antes de tentar pagar novamente.");
+    } else if (state === "quoted") {
+      setWebhookStatusText(null);
+    } else if (state === "rejected") {
+      setCheckoutError("O pagamento não foi concluído. Confira os dados ou tente outra forma de pagamento.");
+      setCheckoutQuote(null);
+      setWebhookStatusText(null);
+    }
+  }, []);
 
-      if (paymentMethod === "pix" && data.mercadoPago?.pix) {
-        setMpPixData(data.mercadoPago.pix);
-        if (data.mercadoPago?.status === "rejected") {
-          setWebhookStatusText(
-            data.mercadoPago.message ||
-              "Chave PIX não cadastrada no Mercado Pago. Exibindo QR Code de conferência."
-          );
-        } else {
-          setWebhookStatusText(
-            "Código PIX gerado via Mercado Pago • Pague para confirmação instantânea"
-          );
+  useEffect(() => {
+    if (activeScreen !== "checkout" || !customerCheckoutStorageKey || activeOrderId) return;
+    try {
+      const saved = sessionStorage.getItem(customerCheckoutStorageKey);
+      if (saved) setActiveOrderId(saved);
+    } catch { /* O pedido continua registrado no servidor. */ }
+  }, [activeScreen, customerCheckoutStorageKey, activeOrderId]);
+
+  useEffect(() => {
+    if (activeScreen !== "checkout" || !activeOrderId || ["confirmed", "rejected", "review"].includes(checkoutState)) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const response = await fetch(`/api/bookings?orderId=${encodeURIComponent(activeOrderId)}`, { cache: "no-store" });
+        if (response.ok && !cancelled) {
+          const data = await response.json();
+          if (!cancelled) applyCheckoutStatus(data);
         }
-      } else if (data.mercadoPago?.status === "rejected") {
-        setWebhookStatusText(data.mercadoPago.message || "Pagamento rejeitado pelo Mercado Pago.");
-      } else {
-        setWebhookStatusText(
-          "Pagamento aprovado pelo Mercado Pago • Reserva salva no PostgreSQL"
-        );
+      } catch { /* Uma falha de rede não altera o estado do pedido. */ }
+      if (!cancelled) timer = setTimeout(refresh, 7000);
+    };
+    timer = setTimeout(refresh, checkoutState ? 7000 : 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [activeScreen, activeOrderId, checkoutState, applyCheckoutStatus]);
+
+  useEffect(() => {
+    if (checkoutState !== "rejected" && checkoutState !== "quoted") return;
+    if (customerCheckoutStorageKey) {
+      try { sessionStorage.removeItem(customerCheckoutStorageKey); } catch {}
+    }
+    setActiveOrderId("");
+  }, [checkoutState, customerCheckoutStorageKey]);
+
+  const handleConfirmBookingWithWebhook = async () => {
+    if (isProcessingCheckout || activeOrderId) return;
+    setCheckoutError(null);
+    if (!acceptedTerms) {
+      setCheckoutError("Leia e aceite os termos antes de continuar.");
+      return;
+    }
+    setIsProcessingCheckout(true);
+    try {
+      if (!currentCheckoutQuote) {
+        const res = await fetch("/api/bookings", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: quoteFingerprint,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Não foi possível conferir o preço.");
+        setCheckoutQuote({ ...data, fingerprint: quoteFingerprint });
+        return;
       }
-
-      // Rola suavemente até o comprovante / QR code
-      setTimeout(() => {
-        const el = document.getElementById("booking-confirmation-section");
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
+      let card;
+      if (paymentMethod === "card") {
+        if (!currentCheckoutQuote.publicKey || cardNumber.replace(/\D/g, "").length < 13 ||
+            !cardHolder.trim() || cardExpiry.replace(/\D/g, "").length !== 4 || cardCvv.replace(/\D/g, "").length < 3) {
+          throw new Error("Confira os dados do cartão antes de pagar.");
         }
-      }, 150);
-
-      // Decrementa estoque local do quarto
-      setHotelsCatalog((prev) =>
-        prev.map((h) => {
-          if (h.id !== selectedHotel.id) return h;
-          const nextAvail = Math.max(0, h.omnibeesAvailableRooms - 1);
-          return {
-            ...h,
-            omnibeesAvailableRooms: nextAvail,
-            stopSell: nextAvail === 0,
-            scarcityLabel:
-              nextAvail === 0
-                ? "Último quarto vendido • Stop Sell"
-                : `Apenas ${nextAvail} suíte(s) restante(s) nesta tarifa`,
-            rooms: h.rooms.map((r) =>
-              r.id === selectedRoom.id
-                ? { ...r, omnibeesAvailableCount: Math.max(0, r.omnibeesAvailableCount - 1) }
-                : r
-            ),
-          };
-        })
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao processar a reserva.";
-      setCheckoutError(msg);
+        card = await tokenizeCard({
+          publicKey: currentCheckoutQuote.publicKey, number: cardNumber, holder: cardHolder,
+          expiry: cardExpiry, cvv: cardCvv, cpf: primaryCpf,
+        });
+        setCardNumber("");
+        setCardCvv("");
+        setCardExpiry("");
+        setCardHolder("");
+      }
+      const { orderId } = currentCheckoutQuote;
+      setActiveOrderId(orderId);
+      applyCheckoutStatus({ state: "paying" });
+      try { if (customerCheckoutStorageKey) sessionStorage.setItem(customerCheckoutStorageKey, orderId); } catch {}
+      const res = await fetch("/api/bookings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pay", orderId, card }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status < 500) {
+          try { if (customerCheckoutStorageKey) sessionStorage.removeItem(customerCheckoutStorageKey); } catch {}
+          setActiveOrderId("");
+          setCheckoutState("");
+          setWebhookStatusText(null);
+        }
+        if (res.status === 409) setCheckoutQuote(null);
+        throw new Error(data.error || "Não foi possível concluir o pagamento.");
+      }
+      applyCheckoutStatus(data);
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Não foi possível concluir a operação.");
     } finally {
       setIsProcessingCheckout(false);
     }
@@ -3058,6 +3038,29 @@ export default function HospedeClubApp() {
                 </div>
               </div>
 
+              {extraCheckoutGuests.length > 0 && (
+                <div className="rounded-2xl border border-[#E5DEC9] bg-white p-5 space-y-4">
+                  <h2 className="font-editorial text-xl text-[#182026]">Demais hóspedes</h2>
+                  {extraCheckoutGuests.map(({ key, label, minAge, maxAge }) => {
+                    const guest = extraGuestDetails[key] || { name: "", surname: "", age: "" };
+                    const update = (field: "name" | "surname" | "age", value: string) =>
+                      setExtraGuestDetails((current) => ({ ...current, [key]: { ...guest, [field]: value } }));
+                    return (
+                      <fieldset key={key} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <legend className="text-sm font-semibold">{label}</legend>
+                        <input aria-label={`Nome de ${label}`} placeholder="Nome" value={guest.name} onChange={(e) => update("name", e.target.value)}
+                          className="rounded-lg border border-[#E2D9C8] px-3 py-2 text-sm" />
+                        <input aria-label={`Sobrenome de ${label}`} placeholder="Sobrenome" value={guest.surname} onChange={(e) => update("surname", e.target.value)}
+                          className="rounded-lg border border-[#E2D9C8] px-3 py-2 text-sm" />
+                        {minAge !== null && <input type="number" min={minAge} max={maxAge || undefined}
+                          aria-label={`Idade de ${label} no dia da entrada`} placeholder="Idade na entrada" value={guest.age}
+                          onChange={(e) => update("age", e.target.value)} className="rounded-lg border border-[#E2D9C8] px-3 py-2 text-sm" />}
+                      </fieldset>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* 3. Modalidade de Pagamento Mercado Pago */}
               <div className="p-4 sm:p-6 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
                 <div className="flex items-center justify-between mb-4">
@@ -3081,6 +3084,7 @@ export default function HospedeClubApp() {
                   {/* Opção PIX */}
                   <div
                     onClick={() => {
+                      if (activeOrderId || isProcessingCheckout) return;
                       setPaymentMethod("pix");
                       setMpPixData(null);
                     }}
@@ -3113,6 +3117,7 @@ export default function HospedeClubApp() {
                   {/* Opção Cartão de Crédito */}
                   <div
                     onClick={() => {
+                      if (activeOrderId || isProcessingCheckout) return;
                       setPaymentMethod("card");
                       setMpPixData(null);
                     }}
@@ -3386,32 +3391,29 @@ export default function HospedeClubApp() {
                   )}
                 </div>
 
-                {/* Botão de Fechar Reserva */}
-                <button
-                  onClick={handleConfirmBookingWithWebhook}
-                  disabled={isProcessingCheckout}
-                  className="w-full py-4 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] shadow-md transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
-                >
-                  {isProcessingCheckout ? (
-                    <div className="flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Processando no Mercado Pago & Gravando no PostgreSQL...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>
-                        {paymentMethod === "pix"
-                          ? `Gerar PIX Mercado Pago & Fechar Reserva (${nightsCount} Noites)`
-                          : `Pagar com Cartão & Fechar Reserva (${nightsCount} Noites)`}
-                      </span>
-                    </>
-                  )}
-                </button>
+                {currentCheckoutQuote && !activeOrderId && (
+                  <div className="rounded-xl border border-[#E5DEC9] bg-[#FAF7F2] p-4 text-sm">
+                    <strong>Total confirmado da estadia: {formatBRLCents(currentCheckoutQuote.amount)}</strong>
+                    {paymentMethod === "card" && <p>{selectedInstallments}x de aproximadamente {formatBRLCents(currentCheckoutQuote.amount / selectedInstallments)}</p>}
+                  </div>
+                )}
+                {activeOrderId && webhookStatusText && (
+                  <div role="status" className="rounded-xl bg-[#FAF7F2] border border-[#E5DEC9] p-4 text-sm">
+                    <p>{webhookStatusText}</p>
+                    <p className="mt-1 break-all text-xs">Pedido {activeOrderId}</p>
+                  </div>
+                )}
+                {!activeOrderId && (
+                  <button onClick={handleConfirmBookingWithWebhook} disabled={isProcessingCheckout}
+                    className="w-full py-4 px-5 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.14em] transition disabled:opacity-60">
+                    {isProcessingCheckout ? "Processando..." : !currentCheckoutQuote ? "Conferir preço da estadia" :
+                      paymentMethod === "pix" ? "Gerar Pix" : "Pagar com cartão"}
+                  </button>
+                )}
               </div>
 
               {/* 4. Voucher Confirmado & Status de Gravação no PostgreSQL */}
-              {bookingConfirmedVoucher && (
+              {bookingConfirmedVoucher && confirmedStay && (
                 <div
                   id="booking-confirmation-section"
                   className="p-6 rounded-2xl bg-white text-[#182026] border-2 border-[#0F5257] shadow-md space-y-4"
@@ -3436,37 +3438,9 @@ export default function HospedeClubApp() {
                   )}
 
                   <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-xs text-[#5C646B] space-y-1.5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-[#EAE3D5]">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-[#8C7A5B] block">Propriedade & Local</span>
-                        <strong className="text-[#182026] text-sm block">{selectedHotel.name}</strong>
-                        <span className="text-[11px] text-[#7A828A]">
-                          {(selectedHotel as any).address || (selectedHotel as any).primaryLandmarkDistance || selectedHotel.cityName}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-[#8C7A5B] block">Período & Regime</span>
-                        <strong className="text-[#182026] text-xs block">
-                          Check-in: {checkInDate} → Check-out: {checkOutDate} ({nightsCount} {nightsCount === 1 ? "diária" : "diárias"})
-                        </strong>
-                        <span className="text-[11px] text-[#0F5257] font-semibold">
-                          {selectedRoom.name} • {(selectedHotel as any).scarcityLabel || "Café da Manhã Incluso"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <p>
-                      <strong>Titular da Reserva:</strong> {primaryFirstName} {primaryLastName} ({primaryEmail})
-                    </p>
-                    <p>
-                      <strong>CPF:</strong> {primaryCpf} • <strong>WhatsApp:</strong> {primaryWhatsapp}
-                    </p>
-                    {secondGuestFirstName && (
-                      <p>
-                        <strong>Segundo Adulto:</strong> {secondGuestFirstName} {secondGuestLastName}
-                        {secondGuestCpf ? ` (CPF: ${secondGuestCpf})` : ""}
-                      </p>
-                    )}
+                    <strong className="block text-sm text-[#182026]">{confirmedStay.hotelName} · {confirmedStay.roomName}</strong>
+                    <p>Entrada: {confirmedStay.checkIn} · Saída: {confirmedStay.checkOut}</p>
+                    <p>Titular: {confirmedStay.holder}</p>
 
                     {/* Cláusula Legal Obrigatória do Fornecedor para Certificação Hotelbeds APItude */}
                     <div className="mt-2 pt-2 border-t border-[#EAE3D5] text-[10px] text-[#7A828A] leading-relaxed">
@@ -3477,6 +3451,18 @@ export default function HospedeClubApp() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#EAE3D5]">
+                    <button type="button" onClick={() => {
+                      try { if (customerCheckoutStorageKey) sessionStorage.removeItem(customerCheckoutStorageKey); } catch {}
+                      setActiveOrderId("");
+                      setCheckoutState("");
+                      setCheckoutQuote(null);
+                      setBookingConfirmedVoucher(null);
+                      setConfirmedStay(null);
+                      setWebhookStatusText(null);
+                      goHome();
+                    }} className="px-4 py-2 rounded-xl bg-[#FAF7F2] text-xs text-[#182026]">
+                      Buscar outra hospedagem
+                    </button>
                     <button
                       onClick={() => window.print()}
                       className="px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -3486,7 +3472,7 @@ export default function HospedeClubApp() {
                     </button>
                     <a
                       href={`https://wa.me/?text=${encodeURIComponent(
-                        `Voucher Hóspede Club [${bookingConfirmedVoucher}] confirmado para ${selectedHotel.name}. Titular: ${primaryFirstName} ${primaryLastName}.`
+                        `Voucher Hóspede Club [${bookingConfirmedVoucher}] confirmado para ${confirmedStay.hotelName}. Titular: ${confirmedStay.holder}.`
                       )}`}
                       target="_blank"
                       rel="noreferrer"

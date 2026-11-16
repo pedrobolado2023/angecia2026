@@ -25,6 +25,7 @@ export interface DestinationCity {
 
 export interface RoomCategory {
   id: string;
+  hotelbedsRoomCode?: string;
   name: string;
   sizeM2: number;
   viewLabel: string;

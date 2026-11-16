@@ -1,287 +1,109 @@
-/**
- * HÓSPEDE CLUB — Módulo de Integração Oficial com o Mercado Pago
- * Suporta:
- * 1. PIX Transparente (Geração de QR Code Real via qrcode + Mercado Pago API)
- * 2. Cartão de Crédito em até 12x
- * 3. Geração robusta de QR Code em formato PNG DataURL
- */
+import "server-only";
 
-import QRCode from "qrcode";
+export type MercadoPagoPayment = {
+  id: string;
+  status: string;
+  method: string;
+  externalReference: string;
+  amountCents: number;
+  currency: string;
+  pix?: { qrCode: string; qrCodeBase64: string; ticketUrl?: string; expiresAt?: string };
+};
 
-export interface MercadoPagoPaymentInput {
-  amount: number;
+type PaymentInput = {
+  orderId: string;
+  amountCents: number;
   description: string;
-  paymentMethod: "pix" | "card";
-  installments?: number;
-  payer: {
-    email: string;
-    firstName: string;
-    lastName: string;
-    cpf: string;
-    phone?: string;
-  };
-  cardToken?: string;
-  cardIssuerId?: string;
-  paymentMethodId?: string; // visa, master, elo, amex
+  method: "pix" | "card";
+  installments: number;
+  email: string;
+  cpf: string;
+  card?: { token: string; methodId: string; issuerId?: string };
+};
+
+export class MercadoPagoError extends Error {
+  constructor(public status: number) {
+    super(`Mercado Pago retornou HTTP ${status}.`);
+  }
 }
 
-export interface MercadoPagoPaymentResult {
-  ok: boolean;
-  paymentId: string;
-  status: "pending" | "approved" | "in_process" | "rejected";
-  paymentMethod: "pix" | "card";
-  pix?: {
-    qrCode: string;
-    qrCodeBase64: string;
-    ticketUrl?: string;
-    expiresAt?: string;
-  };
-  card?: {
-    installments: number;
-    installmentAmount: number;
-    totalAmount: number;
-    authorizationCode?: string;
-  };
-  isSimulation: boolean;
-  message?: string;
+export function checkoutPaymentConfigured() {
+  const { CHECKOUT_MODE, HOTELBEDS_ENVIRONMENT, HOTELBEDS_ENDPOINT_URL, HOTELBEDS_API_KEY, HOTELBEDS_SECRET,
+    MERCADOPAGO_ACCESS_TOKEN, MERCADOPAGO_WEBHOOK_SECRET } = process.env;
+  if (!MERCADOPAGO_ACCESS_TOKEN || !MERCADOPAGO_WEBHOOK_SECRET || !HOTELBEDS_API_KEY || !HOTELBEDS_SECRET) return false;
+  if (HOTELBEDS_ENDPOINT_URL && process.env.NODE_ENV === "production") {
+    const endpoint = CHECKOUT_MODE === "live" ? "https://api.hotelbeds.com" : "https://api.test.hotelbeds.com";
+    if (HOTELBEDS_ENDPOINT_URL.replace(/\/+$/, "") !== endpoint) return false;
+  }
+  if (CHECKOUT_MODE === "test") {
+    return HOTELBEDS_ENVIRONMENT === "test" && MERCADOPAGO_ACCESS_TOKEN.startsWith("TEST-");
+  }
+  return CHECKOUT_MODE === "live" && HOTELBEDS_ENVIRONMENT === "production" &&
+    MERCADOPAGO_ACCESS_TOKEN.startsWith("APP_USR-");
 }
 
-export async function processMercadoPagoPayment(
-  input: MercadoPagoPaymentInput
-): Promise<MercadoPagoPaymentResult> {
-  const accessToken =
-    process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() ||
-    process.env.MP_ACCESS_TOKEN?.trim() ||
-    "";
+async function mercadoPagoRequest(path: string, init: RequestInit = {}) {
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!accessToken) throw new Error("Pagamento temporariamente indisponível.");
+  const base = process.env.NODE_ENV !== "production" ? process.env.MERCADOPAGO_TEST_API_URL : undefined;
+  const response = await fetch(`${base || "https://api.mercadopago.com"}${path}`, {
+    ...init, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000),
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", ...init.headers },
+  });
+  if (!response.ok) throw new MercadoPagoError(response.status);
+  return response.json();
+}
 
-  // Se não houver token configurado no ambiente, executa em Modo Sandbox / Simulação
-  if (!accessToken) {
-    const fakeId = `MP-SIM-${Date.now()}`;
-    if (input.paymentMethod === "pix") {
-      const mockPixKey = `00020126580014br.gov.bcb.pix0136hospedeclub-${Math.random()
-        .toString(36)
-        .substring(2, 10)}520400005303986540${input.amount.toFixed(
-        2
-      )}5802BR5916HOSPEDE CLUB ME6009SAO PAULO62070503***6304`;
-
-      // Gera QR Code PNG real e escaneável a partir da chave PIX
-      const qrDataUrl = await QRCode.toDataURL(mockPixKey, {
-        margin: 1,
-        width: 260,
-        color: {
-          dark: "#0F5257",
-          light: "#FFFFFF",
-        },
-      });
-
-      return {
-        ok: true,
-        paymentId: fakeId,
-        status: "pending",
-        paymentMethod: "pix",
-        isSimulation: true,
-        message:
-          "Modo Simulação Ativo (Para gerar cobranças reais do Banco Central, adicione MERCADOPAGO_ACCESS_TOKEN no app do Frontend no Easypanel)",
-        pix: {
-          qrCode: mockPixKey,
-          qrCodeBase64: qrDataUrl,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        },
-      };
-    } else {
-      const inst = Math.max(1, input.installments || 1);
-      return {
-        ok: true,
-        paymentId: fakeId,
-        status: "approved",
-        paymentMethod: "card",
-        isSimulation: true,
-        message: "Pagamento com Cartão aprovado em Modo Simulação.",
-        card: {
-          installments: inst,
-          installmentAmount: Number((input.amount / inst).toFixed(2)),
-          totalAmount: input.amount,
-          authorizationCode: `AUTH-${Math.floor(100000 + Math.random() * 900000)}`,
-        },
-      };
-    }
+function normalizePayment(data: any): MercadoPagoPayment {
+  if (!data?.id || typeof data.status !== "string" || typeof data.external_reference !== "string") {
+    throw new Error("Resposta de pagamento incompleta.");
   }
+  const transaction = data.point_of_interaction?.transaction_data;
+  const pix = typeof transaction?.qr_code === "string" && typeof transaction?.qr_code_base64 === "string"
+    ? {
+      qrCode: transaction.qr_code,
+      qrCodeBase64: transaction.qr_code_base64,
+      ticketUrl: transaction.ticket_url,
+      expiresAt: data.date_of_expiration,
+    } : undefined;
+  return {
+    id: String(data.id), status: Number(data.transaction_amount_refunded || 0) > 0 ? "refunded" : data.status,
+    method: data.payment_method_id || "",
+    externalReference: data.external_reference,
+    amountCents: Math.round(Number(data.transaction_amount) * 100),
+    currency: data.currency_id,
+    pix,
+  };
+}
 
-  // Chamada oficial à API REST do Mercado Pago v1/payments
-  try {
-    const cleanCpf = input.payer.cpf.replace(/\D/g, "");
-    const idempotencyKey = `hospede-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 7)}`;
+export async function createMercadoPagoPayment(input: PaymentInput) {
+  if (input.method === "card" && !input.card) throw new Error("Informe um cartão válido.");
+  const data = await mercadoPagoRequest("/v1/payments", {
+    method: "POST",
+    headers: { "X-Idempotency-Key": input.orderId },
+    body: JSON.stringify({
+      transaction_amount: input.amountCents / 100,
+      description: input.description,
+      external_reference: input.orderId,
+      ...(process.env.MERCADOPAGO_NOTIFICATION_URL
+        ? { notification_url: process.env.MERCADOPAGO_NOTIFICATION_URL } : {}),
+      payer: { email: input.email, identification: { type: "CPF", number: input.cpf } },
+      ...(input.card
+        ? { payment_method_id: input.card.methodId, token: input.card.token, issuer_id: input.card.issuerId, installments: input.installments }
+        : { payment_method_id: "pix", date_of_expiration: new Date(Date.now() + 31 * 60 * 1000).toISOString() }),
+    }),
+  });
+  return normalizePayment(data);
+}
 
-    if (input.paymentMethod === "pix") {
-      const payload = {
-        transaction_amount: Number(input.amount.toFixed(2)),
-        description: input.description,
-        payment_method_id: "pix",
-        payer: {
-          email: input.payer.email,
-          first_name: input.payer.firstName,
-          last_name: input.payer.lastName,
-          identification: {
-            type: "CPF",
-            number: cleanCpf || "11111111111",
-          },
-        },
-      };
+export async function getMercadoPagoPayment(id: string) {
+  if (!/^\d{1,30}$/.test(id)) throw new Error("Identificador de pagamento inválido.");
+  return normalizePayment(await mercadoPagoRequest(`/v1/payments/${id}`));
+}
 
-      const res = await fetch("https://api.mercadopago.com/v1/payments", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          "X-Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message ||
-            data.cause?.[0]?.description ||
-            `Erro na API Mercado Pago (${res.status})`
-        );
-      }
-
-      const txData = data.point_of_interaction?.transaction_data;
-      const rawQrText = txData?.qr_code || "";
-
-      // Se o Mercado Pago não fornecer o base64 diretamente, geramos o PNG usando QRCode
-      let finalQrBase64 = txData?.qr_code_base64 || "";
-      if (!finalQrBase64 && rawQrText) {
-        finalQrBase64 = await QRCode.toDataURL(rawQrText, {
-          margin: 1,
-          width: 260,
-        });
-      }
-
-      return {
-        ok: true,
-        paymentId: String(data.id),
-        status: data.status || "pending",
-        paymentMethod: "pix",
-        isSimulation: false,
-        pix: {
-          qrCode: rawQrText,
-          qrCodeBase64: finalQrBase64,
-          ticketUrl: txData?.ticket_url,
-          expiresAt: data.date_of_expiration,
-        },
-      };
-    } else {
-      // Cartão de Crédito
-      const inst = Math.max(1, input.installments || 1);
-      const payload: Record<string, unknown> = {
-        transaction_amount: Number(input.amount.toFixed(2)),
-        description: input.description,
-        installments: inst,
-        payment_method_id: input.paymentMethodId || "visa",
-        payer: {
-          email: input.payer.email,
-          first_name: input.payer.firstName,
-          last_name: input.payer.lastName,
-          identification: {
-            type: "CPF",
-            number: cleanCpf || "11111111111",
-          },
-        },
-      };
-
-      if (input.cardToken) {
-        payload.token = input.cardToken;
-      }
-      if (input.cardIssuerId) {
-        payload.issuer_id = input.cardIssuerId;
-      }
-
-      const res = await fetch("https://api.mercadopago.com/v1/payments", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          "X-Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message ||
-            data.cause?.[0]?.description ||
-            `Erro na API Mercado Pago (${res.status})`
-        );
-      }
-
-      return {
-        ok: true,
-        paymentId: String(data.id),
-        status: data.status === "approved" ? "approved" : "in_process",
-        paymentMethod: "card",
-        isSimulation: false,
-        card: {
-          installments: inst,
-          installmentAmount: Number((input.amount / inst).toFixed(2)),
-          totalAmount: input.amount,
-          authorizationCode: data.authorization_code || String(data.id),
-        },
-      };
-    }
-  } catch (err: unknown) {
-    const rawMsg =
-      err instanceof Error ? err.message : "Falha ao conectar com Mercado Pago";
-
-    let friendlyMsg = rawMsg;
-    if (rawMsg.includes("without key enabled for QR render")) {
-      friendlyMsg =
-        "Sua conta do Mercado Pago não possui uma chave PIX cadastrada. Acesse o aplicativo ou site do Mercado Pago e cadastre uma chave PIX (qualquer chave: aleatória, CPF, e-mail ou telefone) para habilitar o recebimento via PIX.";
-    } else if (rawMsg.includes("Invalid user identification number")) {
-      friendlyMsg =
-        "O CPF informado pelo cliente é inválido segundo a validação do Mercado Pago. Por favor, digite um CPF com dígitos válidos.";
-    }
-
-    // Mesmo que o Mercado Pago aponte falta de chave do recebedor, geramos o QR Code visual para exibição imediata
-    let fallbackPixData;
-    if (input.paymentMethod === "pix") {
-      const mockPixKey = `00020126580014br.gov.bcb.pix0136hospedeclub-${Math.random()
-        .toString(36)
-        .substring(2, 10)}520400005303986540${input.amount.toFixed(
-        2
-      )}5802BR5916HOSPEDE CLUB ME6009SAO PAULO62070503***6304`;
-
-      try {
-        const qrDataUrl = await QRCode.toDataURL(mockPixKey, {
-          margin: 1,
-          width: 260,
-          color: { dark: "#0F5257", light: "#FFFFFF" },
-        });
-
-        fallbackPixData = {
-          qrCode: mockPixKey,
-          qrCodeBase64: qrDataUrl,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        };
-      } catch {
-        // ignore
-      }
-    }
-
-    return {
-      ok: false,
-      paymentId: `MP-ERR-${Date.now()}`,
-      status: "rejected",
-      paymentMethod: input.paymentMethod,
-      isSimulation: false,
-      message: friendlyMsg,
-      pix: fallbackPixData,
-    };
-  }
+export async function findMercadoPagoPayment(orderId: string) {
+  const params = new URLSearchParams({ external_reference: orderId, sort: "date_created", criteria: "desc", limit: "1" });
+  const data = await mercadoPagoRequest(`/v1/payments/search?${params}`);
+  const match = data.results?.find((item: any) => item.external_reference === orderId);
+  return match ? normalizePayment(match) : null;
 }

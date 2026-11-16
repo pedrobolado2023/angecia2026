@@ -150,5 +150,12 @@ O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, voc�
 
 ## 🔒 Segurança Zero-Leak
 
+### Checkout Mercado Pago e Hotelbeds
+
+- Em homologação, use `CHECKOUT_MODE=test`, credenciais de teste do Mercado Pago e `HOTELBEDS_ENVIRONMENT=test`.
+- Em produção, habilite `CHECKOUT_MODE=live` somente com credenciais de produção dos dois provedores e depois de homologar Pix e cartão. Não misture cobrança real com reservas de teste.
+- Ative as notificações de **Pagamentos** no Mercado Pago para `/api/webhooks/payment` e configure `MERCADOPAGO_WEBHOOK_SECRET` com a chave de assinatura das notificações da aplicação. `MERCADOPAGO_PUBLIC_KEY` é obrigatória para cartão. Se a integração usar URL por pagamento, preencha também `MERCADOPAGO_NOTIFICATION_URL` com a URL HTTPS desse endpoint.
+- Acompanhe pedidos pagos sem voucher em `checkout_orders`. O estado `review` exige conciliar o pagamento no Mercado Pago e verificar a reserva na Hotelbeds antes de confirmar ou estornar. Pedidos parados em `confirming` após falha de execução também exigem conciliação. O checkout não tenta uma segunda reserva automaticamente nesses casos.
+
 - Arquivos `.env` e `.env.local` estão estritamente no `.gitignore` e **nunca** vão para o GitHub.
 - Todas as credenciais de produção devem ser inseridas exclusivamente no painel da plataforma de hospedagem (Vercel / Render / Railway).
