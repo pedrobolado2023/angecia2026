@@ -20,7 +20,8 @@ export function setCustomerSession(response: NextResponse, customer: CustomerCRM
   const secret = sessionSecret();
   if (!secret) throw new Error("Sessões de clientes não configuradas.");
   const payload = Buffer.from(JSON.stringify({
-    id: customer.id, email: customer.email.toLowerCase(), exp: Math.floor(Date.now() / 1000) + lifetime,
+    id: customer.id, email: customer.email.toLowerCase(), version: customer.sessionVersion ?? 0,
+    exp: Math.floor(Date.now() / 1000) + lifetime,
   })).toString("base64url");
   const signature = createHmac("sha256", secret).update(payload).digest("base64url");
   response.cookies.set(cookieName, `${payload}.${signature}`, {
@@ -38,12 +39,14 @@ export async function authenticatedCustomer(request: NextRequest) {
   const actual = Buffer.from(parts[1], "base64url");
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
   try {
-    const { id, email, exp } = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
-    if (typeof id !== "string" || typeof email !== "string" || !Number.isInteger(exp) || exp <= Date.now() / 1000) return null;
+    const { id, email, exp, version = 0 } = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    if (typeof id !== "string" || typeof email !== "string" || !Number.isInteger(version) ||
+        !Number.isInteger(exp) || exp <= Date.now() / 1000) return null;
     const db = getPostgresPool();
     const customer = db ? await findCustomerInPostgres(email) :
       process.env.NODE_ENV === "production" ? null : getCustomerSessionProfile(id);
-    return customer?.id === id && customer.email.toLowerCase() === email && customer.verification?.verified ? customer : null;
+    return customer?.id === id && customer.email.toLowerCase() === email &&
+      (customer.sessionVersion ?? 0) === version && customer.verification?.verified ? customer : null;
   } catch {
     return null;
   }

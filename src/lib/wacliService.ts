@@ -34,11 +34,14 @@ export async function sendWhatsAppVerificationCode(params: {
   phone: string;
   code: string;
   customerName: string;
+  purpose?: "password-reset";
 }): Promise<WacliSendResult> {
   const cleanPhone = sanitizeWhatsAppNumber(params.phone);
   const firstName = params.customerName.trim().split(" ")[0] || "Cliente";
 
-  const messageText =
+  const messageText = params.purpose === "password-reset"
+    ? `Hóspede Club | Recuperação de senha\n\nOlá, ${firstName}! Seu código para definir uma nova senha é *${params.code}*. Ele vale por 15 minutos e só pode ser usado uma vez. Se você não solicitou a troca, ignore esta mensagem.`
+    :
     `🌟 Hóspede Club | Ativação VIP\n\n` +
     `Olá, ${firstName}! 👋\n\n` +
     `Seu cadastro no Hóspede Club foi realizado com sucesso!\n\n` +

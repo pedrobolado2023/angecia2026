@@ -7,6 +7,7 @@
  */
 
 import { Pool } from "pg";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { CustomerCRMRecord, generateVerificationCode, hashPassword, verifyPassword } from "./customerStore";
 
 let pool: Pool | null = null;
@@ -121,6 +122,11 @@ export async function ensurePostgresTables(): Promise<boolean> {
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_sent_at TIMESTAMPTZ;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_attempts INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_window_at TIMESTAMPTZ;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_reset_digest VARCHAR(64);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_reset_sent_at TIMESTAMPTZ;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_reset_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS bookings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -315,6 +321,7 @@ export function mapPostgresRowToCustomer(row: any): CustomerCRMRecord {
       state: row.state || "",
     },
     passwordHash: row.password_hash || undefined,
+    sessionVersion: row.session_version ?? 0,
     verification: {
       code: "",
       expiresAt: row.verification_expires_at ? new Date(row.verification_expires_at).toISOString() : "",
@@ -465,6 +472,70 @@ async function consumePostgresCode(customer: CustomerCRMRecord, code: string): P
     );
     await client.query("COMMIT");
     return mapPostgresRowToCustomer(updated.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function passwordResetDigest(email: string, code: string) {
+  const secret = process.env.CUSTOMER_SESSION_SECRET;
+  if (!secret || Buffer.byteLength(secret) < 32) throw new Error("Recuperação indisponível.");
+  return createHmac("sha256", secret).update(JSON.stringify(["password-reset", email, code])).digest("hex");
+}
+
+export async function issuePasswordResetCode(identifier: string) {
+  const db = getPostgresPool();
+  const customer = await findCustomerInPostgres(identifier);
+  if (!db || !customer || !customer.whatsapp) return null;
+  const email = customer.email.toLowerCase();
+  const code = generateVerificationCode();
+  const result = await db.query(
+    `UPDATE customers SET password_reset_digest = $1, password_reset_expires_at = NOW() + INTERVAL '15 minutes',
+      password_reset_sent_at = NOW(), password_reset_attempts = 0
+      WHERE LOWER(email) = $2 AND (password_reset_sent_at IS NULL OR password_reset_sent_at <= NOW() - INTERVAL '60 seconds')`,
+    [passwordResetDigest(email, code), email]
+  );
+  return result.rowCount ? { customer, code } : null;
+}
+
+export async function resetCustomerPassword(identifier: string, code: string, password: string) {
+  const db = getPostgresPool();
+  const customer = await findCustomerInPostgres(identifier);
+  if (!db || !customer) return false;
+  const email = customer.email.toLowerCase();
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [row] } = await client.query(
+      `SELECT id, password_reset_digest FROM customers WHERE LOWER(email) = $1
+        AND password_reset_expires_at > NOW() AND password_reset_attempts < 5 FOR UPDATE`, [email]
+    );
+    const digest = row?.password_reset_digest;
+    if (!digest) {
+      await client.query("COMMIT");
+      return false;
+    }
+    const stored = Buffer.from(digest, "hex");
+    const supplied = Buffer.from(passwordResetDigest(email, code), "hex");
+    if (stored.length !== supplied.length || !timingSafeEqual(stored, supplied)) {
+      await client.query("UPDATE customers SET password_reset_attempts = password_reset_attempts + 1 WHERE id = $1", [row.id]);
+      await client.query("COMMIT");
+      return false;
+    }
+    await client.query(
+      `UPDATE customers SET password_hash = $1, password_attempts = 0, password_window_at = NULL,
+        password_reset_digest = NULL, password_reset_expires_at = NULL, password_reset_attempts = 0,
+        verification_code = NULL, verification_expires_at = NULL, verification_attempts = 0,
+        verified = TRUE, session_version = session_version + 1,
+        trial_expires_at = CASE WHEN NOT COALESCE(verified, FALSE) AND membership_status = 'TRIAL_ACTIVE'
+          THEN NOW() + INTERVAL '7 days' ELSE trial_expires_at END
+        WHERE id = $2`, [hashPassword(password), row.id]
+    );
+    await client.query("COMMIT");
+    return true;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

@@ -91,6 +91,7 @@ export interface CustomerCRMRecord {
   cpf?: string;
   address?: CustomerAddress;
   passwordHash?: string;
+  sessionVersion?: number;
   verification?: CustomerVerification;
   membership?: CustomerMembership;
   cityOrigin: string;

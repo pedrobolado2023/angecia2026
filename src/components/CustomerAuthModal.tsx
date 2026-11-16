@@ -63,7 +63,7 @@ export function CustomerAuthModal({
   initialMode = "register",
   checkoutContextNotice,
 }: CustomerAuthModalProps) {
-  const [activeTab, setActiveTab] = useState<"register" | "login" | "verify">(
+  const [activeTab, setActiveTab] = useState<"register" | "login" | "verify" | "reset">(
     initialMode === "login" ? "login" : "register"
   );
 
@@ -88,6 +88,12 @@ export function CustomerAuthModal({
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
+  const [resetTarget, setResetTarget] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+
   // Verificação de Código WhatsApp
   const [verificationCode, setVerificationCode] = useState(["", "", "", "", "", ""]);
   const [verificationTarget, setVerificationTarget] = useState("");
@@ -106,19 +112,17 @@ export function CustomerAuthModal({
     if (isOpen) {
       setErrorMessage(null);
       setSuccessNotice(null);
-      if (initialMode === "login") {
-        setActiveTab("login");
-      }
+      setActiveTab(initialMode === "login" ? "login" : "register");
     }
   }, [isOpen, initialMode]);
 
   // Contagem regressiva do reenvio de código WhatsApp
   useEffect(() => {
-    if (activeTab === "verify" && resendCountdown > 0) {
+    if ((activeTab === "verify" || (activeTab === "reset" && resetSent)) && resendCountdown > 0) {
       const timer = setTimeout(() => setResendCountdown((prev) => prev - 1), 1000);
       return () => clearTimeout(timer);
     }
-  }, [activeTab, resendCountdown]);
+  }, [activeTab, resendCountdown, resetSent]);
 
   if (!isOpen) return null;
 
@@ -369,6 +373,62 @@ export function CustomerAuthModal({
     }
   };
 
+  const openPasswordReset = () => {
+    setResetTarget(loginIdentifier);
+    setResetSent(false);
+    setResetCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setLoginPassword("");
+    setErrorMessage(null);
+    setSuccessNotice(null);
+    setActiveTab("reset");
+  };
+
+  const submitPasswordReset = async (action: "send" | "reset") => {
+    setErrorMessage(null);
+    setSuccessNotice(null);
+    if (!resetTarget.trim()) {
+      setErrorMessage("Informe seu e-mail ou CPF cadastrado.");
+      return;
+    }
+    if (action === "reset" && newPassword !== confirmPassword) {
+      setErrorMessage("As senhas não coincidem.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action === "send" ? { action, identifier: resetTarget }
+          : { action, identifier: resetTarget, code: resetCode, password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setErrorMessage(data.error || "Não foi possível concluir a recuperação.");
+        return;
+      }
+      setSuccessNotice(data.message);
+      if (action === "send") {
+        setResetSent(true);
+        setResetCode("");
+        setResendCountdown(60);
+      } else {
+        setLoginIdentifier(resetTarget);
+        setNewPassword("");
+        setConfirmPassword("");
+        setResetCode("");
+        setResetSent(false);
+        setActiveTab("login");
+      }
+    } catch {
+      setErrorMessage("Falha de conexão. Tente novamente.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182026]/50 backdrop-blur-sm p-2.5 sm:p-4 overflow-y-auto">
       <div className="max-w-xl w-full max-h-[92dvh] flex flex-col bg-white text-[#182026] border border-[#DFD5C5] rounded-3xl shadow-2xl my-auto overflow-hidden animate-slide-up">
@@ -384,15 +444,15 @@ export function CustomerAuthModal({
                 ? "Validação de Segurança"
                 : activeTab === "register"
                 ? "Ativar 7 Dias de Membro VIP"
-                : "Entrar na sua Conta"}
+                : activeTab === "reset" ? "Recuperar senha" : "Entrar na sua Conta"}
             </h2>
-            <p className="text-xs text-[#5C646B] mt-1">
+            {activeTab !== "reset" && <p className="text-xs text-[#5C646B] mt-1">
               {activeTab === "verify"
                 ? "Confirme o código recebido no seu WhatsApp para liberar seu acesso."
                 : activeTab === "register"
                 ? "Preencha seus dados para ter 7 dias de degustação com tarifas de até 28% OFF."
                 : "Acesse suas reservas, tarifas exclusivas e perfil de membro."}
-            </p>
+            </p>}
           </div>
 
           <button
@@ -417,7 +477,7 @@ export function CustomerAuthModal({
         )}
 
         {/* Abas de Navegação (quando não estiver verificando código) */}
-        {activeTab !== "verify" && (
+        {(activeTab === "register" || activeTab === "login") && (
           <div className="flex border-b border-[#EAE3D5] px-5 sm:px-6 pt-2">
             <button
               onClick={() => {
@@ -822,6 +882,67 @@ export function CustomerAuthModal({
         )}
 
         {/* CONTEÚDO 3: LOGIN DE CLIENTE */}
+        {activeTab === "reset" && (
+          <form className="space-y-4 p-5 sm:p-6" onSubmit={(event) => {
+            event.preventDefault();
+            void submitPasswordReset(resetSent ? "reset" : "send");
+          }}>
+            <p className="text-sm text-[#5C646B]">
+              Receba um código de uso único no WhatsApp cadastrado para definir sua nova senha.
+            </p>
+            <label className="block text-sm">
+              E-mail ou CPF cadastrado
+              <input type="text" name="username" autoComplete="username" required maxLength={254}
+                value={resetTarget} readOnly={resetSent} onChange={(event) => setResetTarget(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-[#E2D9C8] bg-[#FAF7F2] px-3 py-2.5 read-only:opacity-70" />
+            </label>
+            {resetSent && (
+              <>
+                <label className="block text-sm">
+                  Código do WhatsApp
+                  <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+                    pattern="[0-9]{6}" required value={resetCode}
+                    onChange={(event) => setResetCode(event.target.value.replace(/\D/g, ""))}
+                    className="mt-1 w-full rounded-xl border border-[#E2D9C8] bg-[#FAF7F2] px-3 py-2.5" />
+                </label>
+                <label className="block text-sm">
+                  Nova senha (mínimo de 8 caracteres)
+                  <input type="password" autoComplete="new-password" required minLength={8} maxLength={128}
+                    value={newPassword} onChange={(event) => setNewPassword(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-[#E2D9C8] bg-[#FAF7F2] px-3 py-2.5" />
+                </label>
+                <label className="block text-sm">
+                  Confirme a nova senha
+                  <input type="password" autoComplete="new-password" required minLength={8} maxLength={128}
+                    value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-[#E2D9C8] bg-[#FAF7F2] px-3 py-2.5" />
+                </label>
+              </>
+            )}
+            <button type="submit" disabled={isLoading}
+              className="w-full rounded-2xl bg-[#0F5257] px-6 py-3 text-sm font-medium text-white disabled:opacity-50">
+              {isLoading ? "Aguarde..." : resetSent ? "Salvar nova senha" : "Enviar código por WhatsApp"}
+            </button>
+            <div className="flex flex-wrap justify-between gap-3 text-sm">
+              <button type="button" disabled={isLoading} onClick={() => {
+                setActiveTab("login");
+                setResetCode("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setErrorMessage(null);
+                setSuccessNotice(null);
+              }} className="text-[#0F5257] underline">Voltar ao login</button>
+              {resetSent && (
+                <button type="button" disabled={isLoading || resendCountdown > 0}
+                  onClick={() => void submitPasswordReset("send")}
+                  className="text-[#0F5257] underline disabled:opacity-50">
+                  {resendCountdown > 0 ? `Reenviar em ${resendCountdown}s` : "Reenviar código"}
+                </button>
+              )}
+            </div>
+          </form>
+        )}
+
         {activeTab === "login" && (
           <form onSubmit={handleLoginSubmit} className="p-5 sm:p-6 space-y-4">
             <div>
@@ -857,6 +978,11 @@ export function CustomerAuthModal({
                 />
               </div>
             </div>
+
+            <button type="button" onClick={openPasswordReset} disabled={isLoading}
+              className="text-sm font-medium text-[#0F5257] underline underline-offset-2 disabled:opacity-50">
+              Esqueci minha senha
+            </button>
 
             <div className="pt-2">
               <button
