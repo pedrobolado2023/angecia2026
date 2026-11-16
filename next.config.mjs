@@ -39,12 +39,12 @@ const nextConfig = {
   },
   async rewrites() {
     const backendUrl = process.env.BACKEND_API_URL?.replace(/\/$/, "");
-    if (!backendUrl) return [];
     return [
-      {
+      { source: "/resultados", destination: "/" },
+      ...(backendUrl ? [{
         source: "/api/v1/:path*",
         destination: `${backendUrl}/api/v1/:path*`,
-      },
+      }] : []),
     ];
   },
 };

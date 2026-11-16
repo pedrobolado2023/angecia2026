@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, useEffectEvent } from "react";
 import {
   HERO_SCENES,
   GEO_ORIGIN_PROFILES,
@@ -18,6 +18,7 @@ import { resolveRoomCancellationPolicy } from "@/lib/cancellationPolicy";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
+import { HotelSearchFilters, type SearchCriteria } from "@/components/HotelSearchFilters";
 import { LuxuryImage } from "@/components/LuxuryImage";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
@@ -45,8 +46,6 @@ import {
   CreditCard,
   QrCode,
   ArrowLeft,
-  Footprints,
-  Car,
   Building2,
   Home,
   Check,
@@ -73,7 +72,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-type ActiveScreen = "home" | "destination" | "hotel" | "checkout" | "admin";
+type ActiveScreen = "home" | "results" | "hotel" | "checkout" | "admin";
 
 const CITY_TO_HOTELBEDS_DESTINATION: Record<string, string> = {
   "rio-de-janeiro": "RIO,BZI,ADR",
@@ -109,6 +108,19 @@ const HOTELBEDS_PLACES: [string, string, string][] = [
   ["porto alegre", "POO", "gramado-canela"], ["belo horizonte", "BHZ", "campos-monte-verde"],
 ];
 
+function resultsUrl(criteria: SearchCriteria) {
+  const params = new URLSearchParams({
+    destino: criteria.query,
+    entrada: criteria.checkIn,
+    saida: criteria.checkOut,
+    adultos: String(criteria.adults),
+    criancas: String(criteria.children),
+    bebes: String(criteria.infants),
+  });
+  if (criteria.collectionId) params.set("colecao", criteria.collectionId);
+  return `/resultados?${params}`;
+}
+
 function saoPauloDate(offset = 0) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const date = new Date(`${today}T12:00:00Z`);
@@ -120,6 +132,11 @@ function saoPauloDate(offset = 0) {
 export default function HospedeClubApp() {
   const [hotelsCatalog, setHotelsCatalog] = useState<CuratedHotel[]>(CURATED_HOTELS);
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("home");
+  const [submittedSearch, setSubmittedSearch] = useState<SearchCriteria | null>(null);
+  const resultsScroll = useRef(0);
+  const focusSearchFilters = useRef(false);
+  const hotelOrigin = useRef<ActiveScreen>("home");
+  const currentResultsUrl = useRef("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   // Estado da sincronização ao vivo com Hotelbeds APItude
@@ -166,11 +183,8 @@ export default function HospedeClubApp() {
     [selectedGeoOriginId]
   );
 
-  const [selectedClusterId, setSelectedClusterId] = useState<"all" | "cluster-1" | "cluster-2" | "cluster-3">("all");
   const [selectedCityId, setSelectedCityId] = useState<string>("rio-de-janeiro");
-  const [accommodationTab, setAccommodationTab] = useState<"all" | "hotel" | "villa">("all");
-  const [selectedLandmarkFilter, setSelectedLandmarkFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const searchQuery = submittedSearch?.query || "";
   const [hotelSearchFilter, setHotelSearchFilter] = useState("");
 
   const [checkInDate, setCheckInDate] = useState("");
@@ -599,8 +613,10 @@ export default function HospedeClubApp() {
       customAdults?: number,
       customChildren?: number,
       propertyQuery?: string,
-      hotelCode?: string | number
+      hotelCode?: string | number,
+      customInfants?: number
     ) => {
+      if (hotelCode) currentResultsUrl.current = "";
       hotelbedsRequest.current?.abort();
       const controller = new AbortController();
       hotelbedsRequest.current = controller;
@@ -624,7 +640,7 @@ export default function HospedeClubApp() {
             checkIn, checkOut, destinationCode: code,
             adults: String(customAdults ?? adultsCount),
             children: String(customChildren ?? childrenCount),
-            infants: String(infantsCount),
+            infants: String(customInfants ?? infantsCount),
           });
           if (propertyQuery) params.set("property", propertyQuery);
           if (hotelCode) params.set("hotelCodes", String(hotelCode));
@@ -731,22 +747,6 @@ export default function HospedeClubApp() {
 
   useEffect(() => () => hotelbedsRequest.current?.abort(), []);
 
-  const handleSelectBlackFridayDeal = useCallback(
-    (cityId: string, cityName: string) => {
-      handleCloseBlackFriday();
-      setSelectedCityId(cityId);
-      setActiveScreen("home");
-      const hbDest = CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
-      fetchLiveHotelbedsHotels(hbDest, cityId);
-      setTimeout(() => {
-        const el = document.getElementById("hospede-catalog-section");
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 200);
-    },
-    [handleCloseBlackFriday, fetchLiveHotelbedsHotels]
-  );
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -799,7 +799,8 @@ export default function HospedeClubApp() {
   const [heroSearchText, setHeroSearchText] = useState("");
   const [hotelBarSearchText, setHotelBarSearchText] = useState("");
 
-  const executeHotelbedsSearch = (rawQuery: string) => {
+  const executeHotelbedsSearch = (criteria: SearchCriteria, fromHistory = false) => {
+    const { query: rawQuery, collectionId, checkIn, checkOut, adults, children, infants } = criteria;
     const query = cleanSearchQuery(rawQuery);
     const place = [...HOTELBEDS_PLACES].sort((a, b) => b[0].length - a[0].length)
       .find(([name]) => query === name || ` ${query} `.includes(` ${name} `));
@@ -815,20 +816,111 @@ export default function HospedeClubApp() {
       "penha", "curitiba", "fortaleza", "jericoacoara", "natal", "pipa", "porto alegre", "belo horizonte"]);
     const hotelQuery = (collection && !place) || (place && query === place[0] && exactDestinationNames.has(query))
       ? "" : rawQuery;
-    setSelectedCityId(cityId);
-    setShowFavoritesOnly(false);
-    setActiveScreen("home");
-    setSearchQuery(rawQuery || activeDestinationCity.shortName);
-    setHotelSearchFilter(hotelQuery);
+    const exactCollection = DESTINATION_CITIES.find((city) => city.id === collectionId);
     const rioNeighborhood = /^(copacabana|ipanema|leblon|barra da tijuca|sao conrado|botafogo|centro do rio)$/.test(query);
-    fetchLiveHotelbedsHotels(rioNeighborhood ? "RIO" : destination, rioNeighborhood ? "rio-de-janeiro" : cityId,
-      undefined, undefined, undefined, undefined, !place && !collection && !rioNeighborhood ? query : undefined);
-    requestAnimationFrame(() => document.getElementById("hero-live-search-results")?.scrollIntoView({ behavior: "smooth" }));
+    const resolvedCity = exactCollection?.id || (rioNeighborhood ? "rio-de-janeiro" : cityId);
+    const resolvedDestination = exactCollection ? CITY_TO_HOTELBEDS_DESTINATION[resolvedCity] : rioNeighborhood ? "RIO" : destination;
+    const url = resultsUrl(criteria);
+    if (!fromHistory && window.location.pathname + window.location.search !== url) {
+      window.history.pushState(null, "", url);
+    }
+    currentResultsUrl.current = url;
+    resultsScroll.current = 0;
+    setSelectedCityId(resolvedCity);
+    setShowFavoritesOnly(false);
+    setMobileMenuOpen(false);
+    setActiveScreen("results");
+    setSubmittedSearch(criteria);
+    setHeroSearchText(rawQuery);
+    setCheckInDate(checkIn);
+    setCheckOutDate(checkOut);
+    setNightsCount(calculateDaysDiff(checkIn, checkOut));
+    setAdultsCount(adults);
+    setChildrenCount(children);
+    setInfantsCount(infants);
+    setHotelSearchFilter(exactCollection ? "" : hotelQuery);
+    fetchLiveHotelbedsHotels(resolvedDestination || "RIO", resolvedCity, checkIn, checkOut, adults, children,
+      !exactCollection && !place && !collection && !rioNeighborhood ? query : undefined, undefined, infants);
+    window.scrollTo(0, 0);
+  };
+
+  const searchWithCurrentFilters = (query: string, collectionId?: string) => {
+    executeHotelbedsSearch({
+      query, collectionId, checkIn: checkInDate, checkOut: checkOutDate,
+      adults: adultsCount, children: childrenCount, infants: infantsCount,
+    });
+  };
+
+  const restoreSearchFromUrl = useEffectEvent(() => {
+    if (window.location.pathname !== "/resultados") {
+      setActiveScreen("home");
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const readDate = (key: string, fallback: string) => {
+      const value = params.get(key) || "";
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) ? value : fallback;
+    };
+    const readCount = (key: string, fallback: number, min: number, max: number) => {
+      const value = Number(params.get(key) ?? fallback);
+      return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
+    };
+    const checkIn = readDate("entrada", saoPauloDate(1));
+    const criteria: SearchCriteria = {
+      query: params.get("destino")?.trim().slice(0, 120) || "Rio de Janeiro",
+      checkIn,
+      checkOut: readDate("saida", addDaysToString(checkIn, 1)),
+      adults: readCount("adultos", 2, 1, 8),
+      children: readCount("criancas", 0, 0, 4),
+      infants: readCount("bebes", 0, 0, 4),
+      collectionId: params.get("colecao") || undefined,
+    };
+    if (resultsUrl(criteria) === currentResultsUrl.current) {
+      const hash = window.location.hash;
+      const hotel = hotelbedsResult.find((entry) => hash === `#hotel-${encodeURIComponent(entry.id)}`);
+      if (hotel) {
+        hotelOrigin.current = "results";
+        setSelectedHotelId(hotel.id);
+        setSelectedRoomId(hotel.rooms[0]?.id || "");
+        setActivePhotoIndex(0);
+        setActiveScreen("hotel");
+        window.scrollTo(0, 0);
+        return;
+      }
+      setActiveScreen("results");
+      requestAnimationFrame(() => {
+        if (focusSearchFilters.current) {
+          focusSearchFilters.current = false;
+          document.getElementById("result-destination")?.focus();
+        } else {
+          window.scrollTo(0, resultsScroll.current);
+        }
+      });
+      return;
+    }
+    // On reload the hotel list must be fetched again before a property can be opened.
+    if (window.location.hash) window.history.replaceState(null, "", resultsUrl(criteria));
+    executeHotelbedsSearch(criteria, true);
+  });
+
+  useEffect(() => {
+    const onPopState = () => restoreSearchFromUrl();
+    if (window.location.pathname === "/resultados") onPopState();
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      currentResultsUrl.current = "";
+    };
+  }, []);
+
+  const goHome = () => {
+    if (window.location.pathname === "/resultados") window.history.pushState(null, "", "/");
+    setActiveScreen("home");
   };
 
   const handleExecuteHeroSearch = () => {
     if (!heroSearchText.trim()) return handleOpenDestination(selectedCityId);
-    executeHotelbedsSearch(heroSearchText.trim());
+    searchWithCurrentFilters(heroSearchText.trim());
   };
 
   const handleExecuteHotelBarSearch = (overrideQuery?: string) => {
@@ -838,10 +930,9 @@ export default function HospedeClubApp() {
       return;
     }
     setHeroSearchText(rawQuery);
-    executeHotelbedsSearch(rawQuery);
+    searchWithCurrentFilters(rawQuery);
   };
 
-  const destinationHotels = hotelbedsResult;
   const canBookSelectedHotel = !isHotelbedsLoading && hotelbedsResult.some((hotel) => hotel.id === selectedHotelId);
 
 
@@ -905,21 +996,27 @@ export default function HospedeClubApp() {
         infants: infantsCount,
       });
     }
-    setSelectedLandmarkFilter("all");
-    setActiveScreen("destination");
-    setMobileMenuOpen(false);
+    searchWithCurrentFilters(matchedCity?.name || "Rio de Janeiro", cityId);
+  };
 
-    // Consulta disponibilidade na Hotelbeds para o destino selecionado com as datas selecionadas
-    const hbCode = CITY_TO_HOTELBEDS_DESTINATION[cityId] || "RIO";
-    fetchLiveHotelbedsHotels(hbCode, cityId, checkInDate, checkOutDate);
+  const handleSelectBlackFridayDeal = (cityId: string) => {
+    handleCloseBlackFriday();
+    handleOpenDestination(cityId);
+  };
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const rememberHotelOrigin = (hotel: CuratedHotel) => {
+    hotelOrigin.current = activeScreen;
+    if (activeScreen === "results" && submittedSearch) {
+      resultsScroll.current = window.scrollY;
+      window.history.pushState(null, "", `${resultsUrl(submittedSearch)}#hotel-${encodeURIComponent(hotel.id)}`);
+    }
   };
 
   const handleOpenHotelDetail = (hotel: CuratedHotel) => {
     if (!hotelbedsResult.some((entry) => entry.id === hotel.id) && hotel.hotelbedsCode) {
       fetchLiveHotelbedsHotels(activeHotelbedsDestination.current, hotel.cityId, undefined, undefined, undefined, undefined, undefined, hotel.hotelbedsCode);
     }
+    rememberHotelOrigin(hotel);
     setSelectedHotelId(hotel.id);
     setSelectedRoomId(hotel.rooms[0]?.id || "");
     setActivePhotoIndex(0);
@@ -939,6 +1036,7 @@ export default function HospedeClubApp() {
   const handleDirectCheckoutProceed = (hotel: CuratedHotel, room?: RoomCategory) => {
     const chosenRoom = room || hotel.rooms[0];
     if (!chosenRoom) return;
+    if (activeScreen === "results") rememberHotelOrigin(hotel);
     setSelectedHotelId(hotel.id);
     setSelectedRoomId(chosenRoom.id);
     setBookingConfirmedVoucher(null);
@@ -1319,7 +1417,7 @@ export default function HospedeClubApp() {
           {/* Brand Logo */}
           <button
             onClick={() => {
-              setActiveScreen("home");
+              goHome();
               setShowFavoritesOnly(false);
               setMobileMenuOpen(false);
             }}
@@ -1346,7 +1444,7 @@ export default function HospedeClubApp() {
           <nav className="hidden lg:flex items-center gap-7 text-xs tracking-wider uppercase">
             <button
               onClick={() => {
-                setActiveScreen("home");
+                goHome();
                 setShowFavoritesOnly(false);
               }}
               className={`py-1 transition cursor-pointer border-b-2 ${
@@ -1374,7 +1472,7 @@ export default function HospedeClubApp() {
             <button
               onClick={() => {
                 setShowFavoritesOnly(!showFavoritesOnly);
-                setActiveScreen("home");
+                goHome();
               }}
               className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 border ${
                 showFavoritesOnly
@@ -1447,7 +1545,7 @@ export default function HospedeClubApp() {
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 onClick={() => {
-                  setActiveScreen("home");
+                  goHome();
                   setShowFavoritesOnly(false);
                   setMobileMenuOpen(false);
                 }}
@@ -1540,7 +1638,6 @@ export default function HospedeClubApp() {
                           type="button"
                           onClick={() => {
                             setHeroSearchText("");
-                            setSearchQuery("");
                             heroSearchInputRef.current?.focus();
                           }}
                           className="p-1 rounded-full text-[#5C646B] hover:text-[#182026] hover:bg-[#EAE3D5] transition cursor-pointer shrink-0"
@@ -1857,194 +1954,6 @@ export default function HospedeClubApp() {
             </div>
           </section>
 
-          {/* RESULTADOS DA PESQUISA LIVRE NA PÁGINA INICIAL */}
-          {searchQuery.trim() !== "" && !showFavoritesOnly && (
-            <section id="hero-live-search-results" className="bg-[#FAF7F2] border-t border-[#E5DEC9] py-10 px-4 sm:px-6 md:px-8">
-              <div className="max-w-7xl mx-auto">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                  <div>
-                    <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
-                      Resultados da Pesquisa
-                    </span>
-                    <h2 className="font-editorial text-2xl sm:text-4xl font-normal text-[#182026]">
-                      {isHotelbedsLoading ? "Buscando hotéis" : hotelbedsError ? "Consulta indisponível" : `${filteredHotels.length} ${filteredHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"}`} para &ldquo;{searchQuery}&rdquo;
-                    </h2>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleOpenDestination("rio-de-janeiro")}
-                      className="px-3.5 py-1.5 rounded-full border border-[#D5C7B2] bg-white text-xs text-[#0F5257] font-medium hover:border-[#B8863B] transition cursor-pointer"
-                    >
-                      Ver Catálogo Completo do Rio
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSearchQuery("");
-                        setHeroSearchText("");
-                      }}
-                      className="text-xs text-[#5C646B] hover:text-[#182026] hover:underline cursor-pointer"
-                    >
-                      Limpar busca
-                    </button>
-                  </div>
-                </div>
-
-                {/* BANNER DE CARREGAMENTO AO VIVO NA HOME */}
-                {isHotelbedsLoading && (
-                  <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF7F2] via-white to-[#FAF7F2] border border-[#B8863B]/40 shadow-sm animate-pulse flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-10 h-10 rounded-full bg-[#B8863B]/10 flex items-center justify-center shrink-0">
-                        <RefreshCw className="w-5 h-5 text-[#B8863B] animate-spin" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-[#182026]">
-                            {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
-                          </h4>
-                          <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            Pesquisando
-                          </span>
-                        </div>
-                        <p className="text-xs text-[#5C646B] mt-0.5">
-                          Consultando tarifas oficiais de membro, quartos disponíveis e fotos em alta definição.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="hidden md:flex items-center gap-2 text-xs text-[#9A6D28] font-medium shrink-0">
-                      <span className="w-2 h-2 rounded-full bg-[#B8863B] animate-ping" />
-                      <span>Atualizando catálogo</span>
-                    </div>
-                  </div>
-                )}
-
-                {hotelbedsNotice && <p role="status" className="mb-4 text-sm text-[#9A6D28]">{hotelbedsNotice}</p>}
-                {hotelbedsError ? (
-                  <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{hotelbedsError}</p>
-                ) : filteredHotels.length === 0 ? (
-                  isHotelbedsLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {[1, 2, 3].map((s) => (
-                        <div
-                          key={`home-skel-${s}`}
-                          className="rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm animate-pulse flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="h-52 bg-gradient-to-r from-[#EAE3D5] via-[#F5EFE6] to-[#EAE3D5]" />
-                            <div className="p-4 space-y-2.5">
-                              <div className="h-3 w-24 bg-[#EAE3D5] rounded-full" />
-                              <div className="h-5 w-3/4 bg-[#EAE3D5] rounded-md" />
-                              <div className="h-3 w-1/2 bg-[#EAE3D5] rounded-full" />
-                            </div>
-                          </div>
-                          <div className="p-4 pt-0 border-t border-[#F0EAE0] mt-3 space-y-2">
-                            <div className="h-6 w-28 bg-[#EAE3D5] rounded-md" />
-                            <div className="h-9 w-full bg-[#EAE3D5] rounded-xl" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
-                      <p className="text-[#182026] font-medium text-sm">
-                        Nenhum hotel disponível para &ldquo;{searchQuery}&rdquo; nas datas selecionadas.
-                      </p>
-                      <p className="text-xs text-[#5C646B]">
-                        Tente pesquisar por &ldquo;Rio de Janeiro&rdquo;, &ldquo;Copacabana&rdquo;, &ldquo;São Conrado&rdquo;, &ldquo;Gramado&rdquo; ou &ldquo;Maceió&rdquo;.
-                      </p>
-                      <button
-                        onClick={() => {
-                          setSearchQuery("Rio de Janeiro");
-                          setHeroSearchText("Rio de Janeiro");
-                          handleOpenDestination("rio-de-janeiro");
-                        }}
-                        className="mt-2 px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium cursor-pointer shadow-xs hover:bg-[#9A6D28] transition"
-                      >
-                        Ver Hotéis no Rio de Janeiro
-                      </button>
-                    </div>
-                  )
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredHotels.map((hotel) => {
-                      const pricing = calculateVellutoPricing(
-                        hotel.netRate,
-                        hotel.barRate,
-                        0.15,
-                        hotel.cleaningFee || 0,
-                        hotel.securityDeposit || 0
-                      );
-                      const isFav = favoriteIds.includes(hotel.id);
-                      const isSoldOut = Boolean(hotel.stopSell || hotel.omnibeesAvailableRooms <= 0);
-
-                      return (
-                        <article
-                          key={hotel.id}
-                          className="rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm hover:shadow-md transition flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="relative h-52 overflow-hidden">
-                              <LuxuryImage
-                                src={hotel.heroImage}
-                                alt={hotel.name}
-                                fallbackLabel={hotel.name}
-                                className="w-full h-full hover:scale-105 transition duration-700"
-                              />
-                              <div className="absolute top-3.5 right-3.5 z-20">
-                                <button
-                                  onClick={(e) => toggleFavorite(hotel.id, e)}
-                                  className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#182026] hover:text-[#B83B2B] shadow-sm transition cursor-pointer"
-                                  aria-label="Salvar"
-                                >
-                                  <Heart
-                                    className={`w-4 h-4 ${
-                                      isFav ? "fill-[#B83B2B] text-[#B83B2B]" : ""
-                                    }`}
-                                  />
-                                </button>
-                              </div>
-                              <div className="absolute bottom-3 left-3 z-20">
-                                <span className="px-2.5 py-1 rounded-full bg-[#182026]/85 backdrop-blur-md text-white text-[10px] font-medium tracking-wide">
-                                  {hotel.stateCode} • {hotel.neighborhood}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="p-5">
-                              <span className="text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium block">
-                                {hotel.cityName}
-                              </span>
-                              <h3 className="font-editorial text-xl font-normal text-[#182026] mt-0.5 leading-snug">
-                                {hotel.name}
-                              </h3>
-                              <p className="text-xs text-[#5C646B] line-clamp-2 mt-1.5">{hotel.subtitle}</p>
-                            </div>
-                          </div>
-                          <div className="px-5 pb-5 pt-3 border-t border-[#F0EAE1] bg-[#FAF7F2] flex items-center justify-between gap-3">
-                            <div className="tabular-price">
-                              <span className="text-xs text-[#5C646B] line-through block">
-                                {formatBRL(pricing.barRate)}
-                              </span>
-                              <span className="text-lg font-semibold text-[#0F5257]">
-                                {formatBRL(pricing.pix.pixPrice)}
-                              </span>
-                              <span className="text-xs text-[#5C646B]"> /noite</span>
-                            </div>
-                            <button
-                              disabled={isSoldOut}
-                              onClick={() => handleOpenHotelDetail(hotel)}
-                              className="py-2 px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white text-xs uppercase tracking-[0.1em] font-medium transition cursor-pointer shadow-xs"
-                            >
-                              Ver Tarifas
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
           {/* EXIBE APENAS SE O USUÁRIO CLICAR EM "SALVOS" NO TOPO */}
           {showFavoritesOnly && (
             <section className="bg-white border-t border-[#E5DEC9] py-12 px-4 sm:px-6 md:px-8">
@@ -2146,207 +2055,196 @@ export default function HospedeClubApp() {
       {/* =====================================================================
           TELA 02: PÁGINA DE DESTINO (COMPACTA, ELEGANTE E COM FOCO NOS QUARTOS)
          ===================================================================== */}
-      {activeScreen === "destination" && (
-        <main className="flex-1 bg-[#FAF7F2]">
-          {/* HEADER COMPACTO E ELEGANTE (SEM IMAGEM GIGANTE QUE EMPURRA OS QUARTOS PARA BAIXO) */}
-          <section className="bg-white border-b border-[#E5DEC9] px-4 sm:px-6 md:px-8 py-5">
-            <div className="max-w-7xl mx-auto">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <button
-                  onClick={() => setActiveScreen("home")}
-                  className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-semibold hover:text-[#7A551E] transition cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Voltar aos Destinos</span>
-                </button>
-                <span className="px-3 py-1 rounded-full bg-[#0F5257]/10 text-[#0F5257] text-[11px] font-medium">
-                  {activeDestinationCity.regionTag}
-                </span>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-                <div>
-                  <h1 className="font-editorial text-3xl sm:text-4xl font-normal text-[#182026]">
-                    {activeDestinationCity.name}
-                  </h1>
-                  <p className="text-xs sm:text-sm text-[#5C646B] mt-0.5 max-w-2xl">
-                    {activeDestinationCity.tagline}
-                  </p>
-                </div>
-                <div className="text-xs text-[#0F5257] font-medium bg-[#FAF7F2] px-3.5 py-1.5 rounded-xl border border-[#E5DEC9] self-start sm:self-auto shrink-0">
-                  Tarifas com até {activeDestinationCity.avgSavingsPercent}% de economia
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 lg:pb-10">
-
-            {/* BANNER DE CARREGAMENTO AO VIVO NO DESTINO */}
-            {isHotelbedsLoading && (
-              <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF7F2] via-white to-[#FAF7F2] border border-[#B8863B]/40 shadow-sm animate-pulse flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-10 h-10 rounded-full bg-[#B8863B]/10 flex items-center justify-center shrink-0">
-                    <RefreshCw className="w-5 h-5 text-[#B8863B] animate-spin" />
-                  </div>
+      {activeScreen === "results" && submittedSearch && (
+            <main id="search-results" className="flex-1 bg-[#FAF7F2] border-t border-[#E5DEC9] py-10 px-4 sm:px-6 md:px-8">
+              <div className="max-w-7xl mx-auto">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold text-[#182026]">
-                        {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
-                      </h4>
-                      <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                        Sincronizando
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#5C646B] mt-0.5">
-                      Verificando tarifas de membro com até 28% OFF, disponibilidade oficial de quartos e fotos do CDN GIATA.
-                    </p>
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
+                      Resultados da Pesquisa
+                    </span>
+                    <h1 className="font-editorial text-2xl sm:text-4xl font-normal text-[#182026]">
+                      {isHotelbedsLoading ? "Buscando hotéis" : hotelbedsError ? "Consulta indisponível" : `${filteredHotels.length} ${filteredHotels.length === 1 ? "propriedade encontrada" : "propriedades encontradas"}`} para &ldquo;{searchQuery}&rdquo;
+                    </h1>
                   </div>
                 </div>
-                <div className="hidden md:flex items-center gap-2 text-xs text-[#9A6D28] font-medium shrink-0">
-                  <span className="w-2 h-2 rounded-full bg-[#B8863B] animate-ping" />
-                  <span>Carregando hotéis</span>
-                </div>
-              </div>
-            )}
-
-            {hotelbedsNotice && <p role="status" className="mb-4 text-sm text-[#9A6D28]">{hotelbedsNotice}</p>}
-            {hotelbedsError ? <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{hotelbedsError}</p> :
-              !isHotelbedsLoading && !destinationHotels.length && <p className="mb-4 text-sm">Nenhum hotel disponível para este destino nas datas selecionadas.</p>}
-
-            {/* SKELETON CARDS SE AINDA NÃO HOUVER HOTÉIS CARREGADOS */}
-            {isHotelbedsLoading && destinationHotels.length === 0 && (
-              <div className="space-y-5 sm:space-y-6">
-                {[1, 2, 3].map((s) => (
-                  <div
-                    key={`dest-skel-${s}`}
-                    className="rounded-2xl bg-white border border-[#E5DEC9] overflow-hidden shadow-sm grid grid-cols-1 lg:grid-cols-12 animate-pulse"
-                  >
-                    <div className="lg:col-span-4 min-h-[220px] bg-gradient-to-r from-[#EAE3D5] via-[#F5EFE6] to-[#EAE3D5]" />
-                    <div className="lg:col-span-5 p-5 space-y-3">
-                      <div className="h-3 w-28 bg-[#EAE3D5] rounded-full" />
-                      <div className="h-6 w-3/4 bg-[#EAE3D5] rounded-lg" />
-                      <div className="h-3 w-1/2 bg-[#EAE3D5] rounded-full" />
-                      <div className="h-16 bg-[#FAF7F2] rounded-xl border border-[#EAE3D5]" />
-                    </div>
-                    <div className="lg:col-span-3 p-5 bg-[#FAF7F2] border-t lg:border-t-0 lg:border-l border-[#EAE3D5] flex flex-col justify-between space-y-3">
-                      <div className="h-4 w-24 bg-[#EAE3D5] rounded-full" />
-                      <div className="h-8 w-32 bg-[#EAE3D5] rounded-lg" />
-                      <div className="h-10 w-full bg-[#EAE3D5] rounded-xl" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-5 sm:space-y-6">
-              {destinationHotels.map((hotel) => {
-                const pricing = calculateVellutoPricing(hotel.netRate, hotel.barRate, 0.15);
-                return (
-                  <div
-                    key={hotel.id}
-                    className="rounded-2xl bg-white border border-[#E5DEC9] overflow-hidden shadow-sm hover:shadow-md transition grid grid-cols-1 lg:grid-cols-12"
-                  >
-                    <div className="lg:col-span-4 relative min-h-[190px] sm:min-h-[230px]">
-                      <LuxuryImage
-                        src={hotel.heroImage}
-                        alt={hotel.name}
-                        fallbackLabel={hotel.name}
-                        priority
-                        className="w-full h-full"
-                      />
-                    </div>
-
-                    <div className="lg:col-span-5 p-4 sm:p-6 flex flex-col justify-between">
+                <HotelSearchFilters key={resultsUrl(submittedSearch)} criteria={submittedSearch} earliestDate={getTodayString()}
+                  onSearch={(criteria) => executeHotelbedsSearch(criteria)} />
+                {/* BANNER DE CARREGAMENTO AO VIVO NA HOME */}
+                {isHotelbedsLoading && (
+                  <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF7F2] via-white to-[#FAF7F2] border border-[#B8863B]/40 shadow-sm animate-pulse flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-full bg-[#B8863B]/10 flex items-center justify-center shrink-0">
+                        <RefreshCw className="w-5 h-5 text-[#B8863B] animate-spin" />
+                      </div>
                       <div>
-                        <span className="text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium">
-                          {hotel.neighborhood}
-                        </span>
-                        <h3 className="font-editorial text-2xl sm:text-3xl font-normal text-[#182026] mt-0.5">
-                          {hotel.name}
-                        </h3>
-                        <p className="text-xs text-[#5C646B] mt-1">{hotel.subtitle}</p>
-
-                        <div className="mt-4 text-xs text-[#5C646B]">{hotel.primaryLandmarkDistance}</div>
-                        <div className="empty:hidden mt-4 p-3 sm:p-3.5 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] space-y-2">
-                          {hotel.landmarkDistances.map((dist, idx) => {
-                            const isHighlighted =
-                              selectedLandmarkFilter !== "all" &&
-                              dist.landmarkId === selectedLandmarkFilter;
-                            return (
-                              <div
-                                key={idx}
-                                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs p-1 rounded ${
-                                  isHighlighted ? "bg-[#B8863B]/15 font-medium" : ""
-                                }`}
-                              >
-                                <span className="flex items-center gap-1.5 text-[#182026]">
-                                  {dist.walkOrDrive === "walk" ? (
-                                    <Footprints className="w-3.5 h-3.5 text-[#9A6D28] shrink-0" />
-                                  ) : (
-                                    <Car className="w-3.5 h-3.5 text-[#9A6D28] shrink-0" />
-                                  )}
-                                  <span>{dist.landmarkName}</span>
-                                </span>
-                                <span className="text-[#0F5257] font-medium">{dist.distanceText}</span>
-                              </div>
-                            );
-                          })}
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-[#182026]">
+                            {isLoadingPhotos ? "Carregando as fotos oficiais da Hotelbeds..." : "Consultando hotéis e quartos na Hotelbeds..."}
+                          </h4>
+                          <span className="text-[10px] font-bold text-[#B8863B] bg-[#F5EFE6] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Pesquisando
+                          </span>
                         </div>
+                        <p className="text-xs text-[#5C646B] mt-0.5">
+                          Consultando tarifas oficiais de membro, quartos disponíveis e fotos em alta definição.
+                        </p>
                       </div>
                     </div>
-
-                    <div className="lg:col-span-3 p-4 sm:p-6 bg-[#FAF7F2] border-t lg:border-t-0 lg:border-l border-[#EAE3D5] flex flex-col justify-between">
-                      <div className="tabular-price">
-                        <span className="text-xs text-[#5C646B] line-through block">
-                          Oficial {formatBRL(pricing.barRate)}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-[0.16em] text-[#9A6D28] font-medium block mt-2">
-                          Tarifa Membro
-                        </span>
-                        <p className="text-xl sm:text-2xl font-semibold text-[#0F5257] mt-0.5">
-                          {formatBRL(pricing.pix.pixPrice)}
-                        </p>
-                        <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded-full bg-[#0F5257]/10 text-[#0F5257] text-xs font-medium">
-                          Economia de {formatBRL(pricing.pix.savingsVsBar)}/noite
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 mt-5 sm:mt-6">
-                        <button
-                          onClick={() => handleDirectCheckout(hotel)}
-                          className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white font-medium text-xs uppercase tracking-[0.12em] shadow-xs transition flex items-center justify-center cursor-pointer"
-                        >
-                          Reservar Agora
-                        </button>
-                        <button
-                          onClick={() => handleOpenHotelDetail(hotel)}
-                          className="w-full min-h-[44px] py-2 px-4 rounded-xl bg-white border border-[#DFD5C5] hover:border-[#B8863B] text-[#182026] text-xs transition flex items-center justify-center cursor-pointer"
-                        >
-                          Ver Suítes Disponíveis
-                        </button>
-                      </div>
+                    <div className="hidden md:flex items-center gap-2 text-xs text-[#9A6D28] font-medium shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-[#B8863B] animate-ping" />
+                      <span>Atualizando catálogo</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        </main>
+                )}
+
+                {hotelbedsNotice && <p role="status" className="mb-4 text-sm text-[#9A6D28]">{hotelbedsNotice}</p>}
+                {hotelbedsError ? (
+                  <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{hotelbedsError}</p>
+                ) : filteredHotels.length === 0 ? (
+                  isHotelbedsLoading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {[1, 2, 3].map((s) => (
+                        <div
+                          key={`home-skel-${s}`}
+                          className="rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm animate-pulse flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="h-52 bg-gradient-to-r from-[#EAE3D5] via-[#F5EFE6] to-[#EAE3D5]" />
+                            <div className="p-4 space-y-2.5">
+                              <div className="h-3 w-24 bg-[#EAE3D5] rounded-full" />
+                              <div className="h-5 w-3/4 bg-[#EAE3D5] rounded-md" />
+                              <div className="h-3 w-1/2 bg-[#EAE3D5] rounded-full" />
+                            </div>
+                          </div>
+                          <div className="p-4 pt-0 border-t border-[#F0EAE0] mt-3 space-y-2">
+                            <div className="h-6 w-28 bg-[#EAE3D5] rounded-md" />
+                            <div className="h-9 w-full bg-[#EAE3D5] rounded-xl" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-[#E5DEC9] p-8 text-center max-w-xl mx-auto space-y-3">
+                      <p className="text-[#182026] font-medium text-sm">
+                        Nenhum hotel disponível para &ldquo;{searchQuery}&rdquo; nas datas selecionadas.
+                      </p>
+                      <p className="text-xs text-[#5C646B]">
+                        Tente pesquisar por &ldquo;Rio de Janeiro&rdquo;, &ldquo;Copacabana&rdquo;, &ldquo;São Conrado&rdquo;, &ldquo;Gramado&rdquo; ou &ldquo;Maceió&rdquo;.
+                      </p>
+
+                    </div>
+                  )
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredHotels.map((hotel) => {
+                      const pricing = calculateVellutoPricing(
+                        hotel.netRate,
+                        hotel.barRate,
+                        0.15,
+                        hotel.cleaningFee || 0,
+                        hotel.securityDeposit || 0
+                      );
+                      const isFav = favoriteIds.includes(hotel.id);
+                      const isSoldOut = Boolean(hotel.stopSell || hotel.omnibeesAvailableRooms <= 0);
+
+                      return (
+                        <article
+                          key={hotel.id}
+                          className="rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="relative h-52 overflow-hidden">
+                              <LuxuryImage
+                                src={hotel.heroImage}
+                                alt={hotel.name}
+                                fallbackLabel={hotel.name}
+                                className="w-full h-full hover:scale-105 transition duration-700"
+                              />
+                              <div className="absolute top-3.5 right-3.5 z-20">
+                                <button
+                                  onClick={(e) => toggleFavorite(hotel.id, e)}
+                                  className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#182026] hover:text-[#B83B2B] shadow-sm transition cursor-pointer"
+                                  aria-label="Salvar"
+                                >
+                                  <Heart
+                                    className={`w-4 h-4 ${
+                                      isFav ? "fill-[#B83B2B] text-[#B83B2B]" : ""
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                              <div className="absolute bottom-3 left-3 z-20">
+                                <span className="px-2.5 py-1 rounded-full bg-[#182026]/85 backdrop-blur-md text-white text-[10px] font-medium tracking-wide">
+                                  {hotel.stateCode} • {hotel.neighborhood}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="p-5">
+                              <span className="text-[10px] uppercase tracking-[0.18em] text-[#9A6D28] font-medium block">
+                                {hotel.cityName}
+                              </span>
+                              <h3 className="font-editorial text-xl font-normal text-[#182026] mt-0.5 leading-snug">
+                                {hotel.name}
+                              </h3>
+                              <p className="text-xs text-[#5C646B] line-clamp-2 mt-1.5">{hotel.subtitle}</p>
+                            </div>
+                          </div>
+                          <div className="px-5 pb-5 pt-3 border-t border-[#F0EAE1] bg-[#FAF7F2] flex items-center justify-between gap-3">
+                            <div className="tabular-price">
+                              <span className="text-xs text-[#5C646B] line-through block">
+                                {formatBRL(pricing.barRate)}
+                              </span>
+                              <span className="text-lg font-semibold text-[#0F5257]">
+                                {formatBRL(pricing.pix.pixPrice)}
+                              </span>
+                              <span className="text-xs text-[#5C646B]"> /noite</span>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              disabled={isSoldOut}
+                              onClick={() => handleOpenHotelDetail(hotel)}
+                              className="py-2 px-4 rounded-xl bg-[#B8863B] hover:bg-[#9A6D28] text-white text-xs uppercase tracking-[0.1em] font-medium transition cursor-pointer shadow-xs"
+                            >
+                              Ver Tarifas
+                            </button>
+                              {submittedSearch.collectionId && (
+                                <button type="button" disabled={isSoldOut || !hotel.rooms.length}
+                                  onClick={() => handleDirectCheckout(hotel)}
+                                  className="rounded-xl border border-[#DFD5C5] px-3 py-2 text-xs font-medium disabled:opacity-50">
+                                  Reservar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </main>
       )}
 
-      {/* =====================================================================
-          TELA 03: PÁGINA DO HOTEL (CARROSSEL INTERATIVO + COMPARADOR SUÍTES)
-         ===================================================================== */}
       {activeScreen === "hotel" && (
         <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-6 sm:py-10 w-full pb-24 lg:pb-10">
-          <button
-            onClick={() => setActiveScreen("home")}
-            className="inline-flex items-center gap-2 text-xs text-[#9A6D28] font-medium hover:underline mb-4 sm:mb-5 cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Voltar para a tela inicial</span>
-          </button>
+          <div className="flex flex-wrap gap-5 mb-5 text-xs font-medium text-[#9A6D28]">
+            <button type="button" onClick={() => {
+              if (hotelOrigin.current === "results") window.history.back();
+              else setActiveScreen(hotelOrigin.current);
+            }} className="inline-flex items-center gap-2 hover:underline cursor-pointer">
+              <ArrowLeft className="w-3.5 h-3.5" />
+              {hotelOrigin.current === "results" ? "Voltar aos resultados" : "Voltar"}
+            </button>
+            {hotelOrigin.current === "results" && (
+              <button type="button" onClick={() => {
+                focusSearchFilters.current = true;
+                window.history.back();
+              }} className="hover:underline cursor-pointer">
+                Alterar busca
+              </button>
+            )}
+          </div>
 
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 sm:gap-4 mb-6">
             <div>
@@ -2366,7 +2264,7 @@ export default function HospedeClubApp() {
             </div>
           </div>
 
-          {/* BARRA DE PESQUISA, PERÍODO & HÓSPEDES INTERATIVA NA TELA DO HOTEL */}
+          {hotelOrigin.current !== "results" && (
           <div className="bg-white border border-[#E5DEC9] rounded-2xl p-3.5 sm:p-4 mb-6 shadow-xs">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-[#F0EAE0]">
               <div className="flex items-center gap-2">
@@ -2614,6 +2512,8 @@ export default function HospedeClubApp() {
               </div>
             </div>
           </div>
+
+          )}
 
           {/* Galeria com Carrossel Compacto & Elegante */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-8">
@@ -3620,7 +3520,7 @@ export default function HospedeClubApp() {
           onOpenExtranetModal={() => setIsExtranetModalOpen(true)}
           onOpenPricingSimulator={() => setIsPricingDrawerOpen(true)}
           onOpenGovernanceModal={() => setIsCouncilModalOpen(true)}
-          onExitAdmin={() => setActiveScreen("home")}
+          onExitAdmin={goHome}
         />
       )}
 
@@ -3633,7 +3533,7 @@ export default function HospedeClubApp() {
             {/* Início */}
             <button
               onClick={() => {
-                setActiveScreen("home");
+                goHome();
                 setShowFavoritesOnly(false);
               }}
               className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer touch-manipulation transition ${
@@ -3650,7 +3550,7 @@ export default function HospedeClubApp() {
             <button
               onClick={() => {
                 setShowFavoritesOnly(true);
-                setActiveScreen("home");
+                goHome();
               }}
               className={`flex flex-col items-center justify-center py-1 text-[10px] cursor-pointer touch-manipulation relative transition ${
                 showFavoritesOnly ? "text-[#B83B2B] font-bold" : "text-[#5C646B]"
@@ -4026,8 +3926,7 @@ export default function HospedeClubApp() {
           }
         }}
         onBrowseHotels={() => {
-          setActiveScreen("destination");
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          handleOpenDestination(selectedCityId);
         }}
       />
 
