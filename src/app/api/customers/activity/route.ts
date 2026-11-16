@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authenticatedCustomer } from "@/lib/customerSession";
 import { getServerOmnibeesConfig } from "@/lib/serverEnv";
 import {
   recordCustomerActivity,
@@ -10,11 +11,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      customerId,
-      email,
-      fullName,
-      whatsapp,
-      cityOrigin,
       activityType,
       payload = {},
     } = body;
@@ -55,12 +51,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const customer = await authenticatedCustomer(request);
+    if (!customer) return NextResponse.json({ ok: false }, { status: 401 });
     const updatedCustomer = recordCustomerActivity({
-      customerId,
-      email,
-      fullName,
-      whatsapp,
-      cityOrigin,
+      customerId: customer.id,
+      email: customer.email,
+      fullName: customer.fullName,
+      whatsapp: customer.whatsapp,
+      cityOrigin: customer.cityOrigin,
       activityType,
       payload,
     });

@@ -7,7 +7,7 @@
  */
 
 import { Pool } from "pg";
-import { CustomerCRMRecord, hashPassword } from "./customerStore";
+import { CustomerCRMRecord, generateVerificationCode, hashPassword, verifyPassword } from "./customerStore";
 
 let pool: Pool | null = null;
 let tablesInitialized = false;
@@ -15,7 +15,6 @@ let tablesInitialized = false;
 /**
  * Higieniza a DATABASE_URL. Se a senha contiver caracteres especiais como '@',
  * codifica automaticamente para '%40' evitando que o parser quebre o hostname.
- * Exemplo: postgres://postgres:142635Pe@@agentesia_postgres:5432/agentesia
  *       -> postgres://postgres:142635Pe%40@agentesia_postgres:5432/agentesia
  */
 export function sanitizeDatabaseUrl(url?: string): string {
@@ -117,24 +116,11 @@ export async function ensurePostgresTables(): Promise<boolean> {
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
 
-    -- Garante que o administrador / membro Pedro Henrique Bonfim exista no PostgreSQL
-    INSERT INTO customers (
-      member_code, first_name, last_name, full_name, email,
-      country, cpf, whatsapp,
-      cep, street, number, neighborhood, city, state,
-      verification_code, verified, membership_status, trial_expires_at,
-      password_hash, marketing_opt_in, last_active_at
-    ) VALUES (
-      'MEM-359468', 'Pedro', 'Henrique Bonfim', 'Pedro Henrique Bonfim', 'pedrohenriquebonfim156@gmail.com',
-      'Brasil', '12345678900', '5562993473656',
-      '74000-000', 'Avenida Central', '100', 'Setor Bueno', 'Goiânia', 'GO',
-      '359468', TRUE, 'TRIAL_ACTIVE', NOW() + INTERVAL '7 days',
-      '11af28d43e170f80280ab3c087dbeddd88a17a94518735d97d26113a7f3d6397', TRUE, NOW()
-    ) ON CONFLICT (email) DO UPDATE SET
-      password_hash = EXCLUDED.password_hash,
-      verified = TRUE,
-      membership_status = 'TRIAL_ACTIVE',
-      last_active_at = NOW();
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_expires_at TIMESTAMPTZ;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_sent_at TIMESTAMPTZ;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_window_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS bookings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -180,6 +166,8 @@ export async function ensurePostgresTables(): Promise<boolean> {
     CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
     CREATE INDEX IF NOT EXISTS idx_customers_whatsapp ON customers(whatsapp);
     CREATE INDEX IF NOT EXISTS idx_customers_cpf ON customers(cpf);
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS owner_member_code VARCHAR(120);
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS hotelbeds_reference VARCHAR(120);
     CREATE INDEX IF NOT EXISTS idx_bookings_voucher ON bookings(voucher_code);
     CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON bookings(created_at DESC);
   `;
@@ -249,36 +237,18 @@ export async function saveCustomerToPostgres(
           country, cpf, whatsapp,
           cep, street, number, complement, neighborhood, city, state,
           verification_code, verified, membership_status, trial_expires_at,
-          marketing_opt_in, password_hash, last_active_at
+          marketing_opt_in, password_hash, last_active_at, verification_expires_at, verification_sent_at
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8,
           $9, $10, $11, $12, $13, $14, $15,
           $16, $17, $18, $19,
-          $20, $21, NOW()
+          $20, $21, NOW(), NOW() + INTERVAL '15 minutes', NOW()
         )
-        ON CONFLICT (email) DO UPDATE SET
-          full_name = EXCLUDED.full_name,
-          first_name = EXCLUDED.first_name,
-          last_name = EXCLUDED.last_name,
-          cpf = COALESCE(NULLIF(EXCLUDED.cpf, ''), customers.cpf),
-          whatsapp = EXCLUDED.whatsapp,
-          cep = COALESCE(NULLIF(EXCLUDED.cep, ''), customers.cep),
-          street = COALESCE(NULLIF(EXCLUDED.street, ''), customers.street),
-          number = COALESCE(NULLIF(EXCLUDED.number, ''), customers.number),
-          complement = COALESCE(EXCLUDED.complement, customers.complement),
-          neighborhood = COALESCE(NULLIF(EXCLUDED.neighborhood, ''), customers.neighborhood),
-          city = COALESCE(NULLIF(EXCLUDED.city, ''), customers.city),
-          state = COALESCE(NULLIF(EXCLUDED.state, ''), customers.state),
-          verification_code = COALESCE(EXCLUDED.verification_code, customers.verification_code),
-          verified = EXCLUDED.verified,
-          membership_status = EXCLUDED.membership_status,
-          trial_expires_at = COALESCE(EXCLUDED.trial_expires_at, customers.trial_expires_at),
-          password_hash = COALESCE(EXCLUDED.password_hash, customers.password_hash),
-          last_active_at = NOW();
+        ON CONFLICT (email) DO NOTHING RETURNING id;
       `;
 
-      await client.query(upsertSql, [
+      const inserted = await client.query(upsertSql, [
         memberCode,
         firstName,
         lastName,
@@ -302,7 +272,7 @@ export async function saveCustomerToPostgres(
         pwdHash,
       ]);
 
-      console.log(`[PostgreSQL CRM] Cliente '${cleanEmail}' persistido com sucesso no banco!`);
+      if (!inserted.rowCount) return { success: false, error: "Cadastro já existente." };
       return { success: true };
     } finally {
       client.release();
@@ -310,42 +280,6 @@ export async function saveCustomerToPostgres(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[PostgreSQL CRM] Erro ao persistir cliente no banco:", msg);
-    return { success: false, error: msg };
-  }
-}
-
-/**
- * Marca o cliente como verificado no PostgreSQL após informar o código correto
- */
-export async function markCustomerVerifiedInPostgres(
-  identifier: string
-): Promise<{ success: boolean; error?: string }> {
-  const db = getPostgresPool();
-  if (!db) return { success: false, error: "DATABASE_URL ausente." };
-
-  try {
-    const client = await db.connect();
-    try {
-      const clean = identifier.trim().toLowerCase();
-      const digits = identifier.replace(/\D/g, "");
-
-      await client.query(
-        `
-        UPDATE customers
-        SET verified = TRUE,
-            membership_status = 'TRIAL_ACTIVE',
-            last_active_at = NOW()
-        WHERE email = $1 OR whatsapp = $2 OR cpf = $2;
-      `,
-        [clean, digits]
-      );
-
-      return { success: true };
-    } finally {
-      client.release();
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
     return { success: false, error: msg };
   }
 }
@@ -382,8 +316,8 @@ export function mapPostgresRowToCustomer(row: any): CustomerCRMRecord {
     },
     passwordHash: row.password_hash || undefined,
     verification: {
-      code: row.verification_code || "123456",
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      code: "",
+      expiresAt: row.verification_expires_at ? new Date(row.verification_expires_at).toISOString() : "",
       verified: Boolean(row.verified),
       attempts: 0,
     },
@@ -425,7 +359,7 @@ export async function findCustomerInPostgres(
     const client = await db.connect();
     try {
       const clean = (identifier || "").trim().toLowerCase();
-      const digits = (identifier || "").replace(/\D/g, "");
+      const digits = /^[+\d(). -]+$/.test(clean) ? clean.replace(/\D/g, "") : "";
 
       const query = `
         SELECT * FROM customers
@@ -461,29 +395,97 @@ export async function authenticateCustomerInPostgres(
     throw new Error("Nenhum cadastro encontrado com este e-mail ou CPF no banco de dados.");
   }
 
-  if (mode === "password") {
-    const hashed = hashPassword(secret);
-    if (customer.passwordHash && customer.passwordHash !== hashed) {
-      throw new Error("Senha incorreta. Verifique os dados digitados.");
-    }
-  } else {
-    if (!customer.verification || customer.verification.code !== secret.trim()) {
-      throw new Error("Código de segurança inválido.");
-    }
+  if (mode === "code") return consumePostgresCode(customer, secret);
+  const db = getPostgresPool();
+  if (!db || !customer.verification?.verified || !customer.passwordHash) {
+    throw new Error("Credenciais inválidas ou WhatsApp não confirmado.");
   }
-
-  // Atualiza last_active_at no PostgreSQL
-  try {
-    const db = getPostgresPool();
-    if (db) {
-      await db.query("UPDATE customers SET last_active_at = NOW() WHERE email = $1", [customer.email]);
-    }
-  } catch {}
+  const email = customer.email.toLowerCase();
+  const attempt = await db.query(
+    `UPDATE customers SET password_attempts = CASE
+        WHEN password_window_at > NOW() - INTERVAL '15 minutes' THEN password_attempts + 1 ELSE 1 END,
+        password_window_at = CASE WHEN password_window_at > NOW() - INTERVAL '15 minutes' THEN password_window_at ELSE NOW() END
+      WHERE LOWER(email) = $1 AND (password_window_at IS NULL OR
+        password_window_at <= NOW() - INTERVAL '15 minutes' OR password_attempts < 10)`,
+    [email]
+  );
+  if (!attempt.rowCount || !verifyPassword(secret, customer.passwordHash)) {
+    throw new Error("Credenciais inválidas ou WhatsApp não confirmado.");
+  }
+  const currentHash = customer.passwordHash;
+  customer.passwordHash = currentHash.startsWith("scrypt:") ? currentHash : hashPassword(secret);
+  const updated = await db.query(
+    `UPDATE customers SET password_hash = $1, password_attempts = 0, password_window_at = NULL, last_active_at = NOW()
+      WHERE LOWER(email) = $2 AND password_hash = $3 AND verified = TRUE`,
+    [customer.passwordHash, email, currentHash]
+  );
+  if (!updated.rowCount) throw new Error("Credenciais alteradas. Tente novamente.");
 
   return customer;
 }
 
+export async function issuePostgresCode(identifier: string) {
+  const db = getPostgresPool();
+  const customer = await findCustomerInPostgres(identifier);
+  if (!db || !customer) return null;
+  const newCode = generateVerificationCode();
+  const updated = await db.query(
+    `UPDATE customers SET verification_code = $1, verification_expires_at = NOW() + INTERVAL '15 minutes',
+        verification_attempts = 0, verification_sent_at = NOW()
+      WHERE LOWER(email) = $2 AND (verification_sent_at IS NULL OR verification_sent_at <= NOW() - INTERVAL '60 seconds')`,
+    [newCode, customer.email.toLowerCase()]
+  );
+  return updated.rowCount ? { customer, newCode } : null;
+}
+
+async function consumePostgresCode(customer: CustomerCRMRecord, code: string): Promise<CustomerCRMRecord> {
+  if (!/^\d{6}$/.test(code.trim())) throw new Error("Código inválido ou expirado.");
+  const db = getPostgresPool();
+  if (!db) throw new Error("Verificação indisponível.");
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [row] } = await client.query(
+      `SELECT *, (verification_expires_at > NOW()) AS code_is_current FROM customers
+        WHERE LOWER(email) = $1 FOR UPDATE`, [customer.email.toLowerCase()]
+    );
+    if (!row?.code_is_current || !row.verification_code || row.verification_attempts >= 5) {
+      throw new Error("Código inválido ou expirado.");
+    }
+    if (row.verification_code !== code.trim()) {
+      await client.query("UPDATE customers SET verification_attempts = verification_attempts + 1 WHERE id = $1", [row.id]);
+      await client.query("COMMIT");
+      throw new Error("Código inválido ou expirado.");
+    }
+    const updated = await client.query(
+      `UPDATE customers SET verified = TRUE, verification_code = NULL, verification_expires_at = NULL,
+        trial_expires_at = CASE WHEN NOT COALESCE(verified, FALSE) AND membership_status = 'TRIAL_ACTIVE'
+          THEN NOW() + INTERVAL '7 days' ELSE trial_expires_at END,
+        verification_attempts = 0, last_active_at = NOW() WHERE id = $1 RETURNING *`, [row.id]
+    );
+    await client.query("COMMIT");
+    return mapPostgresRowToCustomer(updated.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function ownsHotelbedsBooking(reference: string, customerId: string, email: string) {
+  const db = getPostgresPool();
+  if (!db || !(await ensurePostgresTables())) return false;
+  const result = await db.query(
+    "SELECT 1 FROM bookings WHERE hotelbeds_reference = $1 AND owner_member_code = $2 AND LOWER(primary_email) = $3 LIMIT 1",
+    [reference, customerId, email.toLowerCase()]
+  );
+  return Boolean(result.rowCount);
+}
+
 export interface SaveBookingRecordInput {
+  ownerMemberCode: string;
+  hotelbedsReference?: string;
   bookingCode: string;
   voucherCode: string;
   hotelId: string;
@@ -536,41 +538,7 @@ export async function saveBookingToPostgres(
     try {
       await client.query("BEGIN");
 
-      // 1. Upsert do Cliente Titular
-      const memberCode = `MEM-${Math.floor(1000 + Math.random() * 9000)}`;
-      const fullName = `${input.primaryFirstName.trim()} ${input.primaryLastName.trim()}`;
       const birthDate = input.primaryBirthDate ? input.primaryBirthDate : null;
-
-      await client.query(
-        `
-        INSERT INTO customers (
-          member_code, first_name, last_name, full_name, email,
-          country, cpf, whatsapp, birth_date, last_active_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-        ON CONFLICT (email) DO UPDATE SET
-          first_name = EXCLUDED.first_name,
-          last_name = EXCLUDED.last_name,
-          full_name = EXCLUDED.full_name,
-          country = EXCLUDED.country,
-          cpf = EXCLUDED.cpf,
-          whatsapp = EXCLUDED.whatsapp,
-          birth_date = COALESCE(EXCLUDED.birth_date, customers.birth_date),
-          last_active_at = NOW();
-      `,
-        [
-          memberCode,
-          input.primaryFirstName.trim(),
-          input.primaryLastName.trim(),
-          fullName,
-          input.primaryEmail.trim().toLowerCase(),
-          input.primaryCountry.trim() || "Brasil",
-          input.primaryCpf.trim(),
-          input.primaryWhatsapp.trim(),
-          birthDate,
-        ]
-      );
-
-      // 2. Insert da Reserva Completa
       const secondBirthDate = input.secondGuestBirthDate ? input.secondGuestBirthDate : null;
 
       await client.query(
@@ -581,13 +549,13 @@ export async function saveBookingToPostgres(
           primary_first_name, primary_last_name, primary_email, primary_country, primary_cpf, primary_whatsapp, primary_birth_date,
           second_guest_first_name, second_guest_last_name, second_guest_cpf, second_guest_birth_date,
           payment_method, payment_status, installments,
-          mp_payment_id, mp_status, mp_qr_code, mp_qr_code_base64, mp_ticket_url
+          mp_payment_id, mp_status, mp_qr_code, mp_qr_code_base64, mp_ticket_url, owner_member_code, hotelbeds_reference
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17,
           $18, $19, $20, $21,
           $22, $23, $24,
-          $25, $26, $27, $28, $29
+          $25, $26, $27, $28, $29, $30, $31
         );
       `,
         [
@@ -620,6 +588,8 @@ export async function saveBookingToPostgres(
           input.mpQrCode || null,
           input.mpQrCodeBase64 || null,
           input.mpTicketUrl || null,
+          input.ownerMemberCode,
+          input.hotelbedsReference || null,
         ]
       );
 

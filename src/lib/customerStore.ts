@@ -128,21 +128,42 @@ interface CRMDatabaseSchema {
   updatedAt: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.NODE_ENV !== "production" && process.env.CRM_DATA_DIR
+  ? path.resolve(/* turbopackIgnore: true */ process.env.CRM_DATA_DIR)
+  : path.join(process.cwd(), "data");
 const DB_FILE_PATH = path.join(DATA_DIR, "customers_crm.json");
 
 /**
  * Utilitários criptográficos de senha e código de segurança
  */
-export function hashPassword(password: string): string {
+function legacyHash(password: string): string {
   return crypto
     .createHash("sha256")
     .update(`${password}:hospede_club_salt_2026`)
     .digest("hex");
 }
 
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derived = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${derived}`;
+}
+
+// Fingerprints de senhas padrão antigas, aceitas apenas no código legado.
+const retiredSeedHashes = new Set(["11af28d43e170f80280ab3c087dbeddd88a17a94518735d97d26113a7f3d6397", "7d7191aa82a17b5d3abfe77e42c0237cbb35c615d8e784dbbd98c87bd5cf9386"]);
+
+export function verifyPassword(password: string, stored?: string): boolean {
+  if (!stored || password.length > 256) return false;
+  if (retiredSeedHashes.has(stored)) return false;
+  const parsed = /^scrypt:([a-f0-9]{32}):([a-f0-9]{128})$/.exec(stored);
+  if (!parsed && !/^[a-f0-9]{64}$/.test(stored)) return false;
+  const expected = Buffer.from(parsed ? parsed[2] : stored, "hex");
+  const actual = parsed ? crypto.scryptSync(password, parsed[1], 64) : Buffer.from(legacyHash(password), "hex");
+  return crypto.timingSafeEqual(actual, expected);
+}
+
 export function generateVerificationCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 export function sanitizeCpf(raw: string): string {
@@ -231,7 +252,6 @@ const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
       city: "Goiânia",
       state: "GO",
     },
-    passwordHash: hashPassword("35946800Pedro@"),
     verification: {
       code: "359468",
       expiresAt: "2027-01-01T00:00:00.000Z",
@@ -275,7 +295,6 @@ const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
       city: "São Paulo",
       state: "SP",
     },
-    passwordHash: hashPassword("membro123"),
     verification: {
       code: "849201",
       expiresAt: "2027-01-01T00:00:00.000Z",
@@ -534,8 +553,8 @@ export function verifyWhatsAppVerificationCode(
     return (
       c.id === identifier ||
       c.email.toLowerCase() === cleanId ||
-      sanitizeCpf(c.cpf || "") === cleanDigits ||
-      sanitizePhone(c.whatsapp) === cleanDigits
+      (cleanDigits !== "" && sanitizeCpf(c.cpf || "") === cleanDigits) ||
+      (cleanDigits !== "" && sanitizePhone(c.whatsapp) === cleanDigits)
     );
   });
 
@@ -556,25 +575,20 @@ export function verifyWhatsAppVerificationCode(
   const now = Date.now();
   const expiresAt = new Date(customer.verification.expiresAt).getTime();
 
-  if (now > expiresAt) {
+  if (!Number.isFinite(expiresAt) || now > expiresAt) {
     throw new Error("O código de verificação expirou (15 minutos). Solicite um novo código.");
   }
 
-  if (customer.verification.code !== code.trim()) {
+  if (!/^\d{6}$/.test(code.trim()) || customer.verification.code !== code.trim()) {
     customer.verification.attempts += 1;
     writeCRMDatabase(db);
     throw new Error("Código incorreto. Digite o código de 6 dígitos enviado ao seu WhatsApp.");
   }
 
-  // Código confirmado com sucesso!
   customer.verification.verified = true;
+  customer.verification.code = "";
+  customer.verification.expiresAt = "";
   customer.verification.attempts = 0;
-  customer.membership = {
-    status: "TRIAL_ACTIVE",
-    trialStartedAt: new Date().toISOString(),
-    trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    daysRemaining: 7,
-  };
   customer.lastActiveAt = new Date().toISOString();
   customer.campaignTags = customer.campaignTags.filter((t) => t !== "Aguardando Código WhatsApp");
 
@@ -597,8 +611,8 @@ export function resendCustomerWhatsAppCode(identifier: string): {
     return (
       c.id === identifier ||
       c.email.toLowerCase() === cleanId ||
-      sanitizeCpf(c.cpf || "") === cleanDigits ||
-      sanitizePhone(c.whatsapp) === cleanDigits
+      (cleanDigits !== "" && sanitizeCpf(c.cpf || "") === cleanDigits) ||
+      (cleanDigits !== "" && sanitizePhone(c.whatsapp) === cleanDigits)
     );
   });
 
@@ -606,13 +620,16 @@ export function resendCustomerWhatsAppCode(identifier: string): {
     throw new Error("Cliente não encontrado.");
   }
 
+  if (Date.parse(customer.verification?.expiresAt || "") > Date.now() + 14 * 60 * 1000) {
+    throw new Error("Aguarde um minuto para solicitar outro código.");
+  }
   const newCode = generateVerificationCode();
   const codeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   customer.verification = {
     code: newCode,
     expiresAt: codeExpiresAt,
-    verified: false,
+    verified: customer.verification?.verified || false,
     attempts: 0,
   };
   customer.lastActiveAt = new Date().toISOString();
@@ -637,7 +654,7 @@ export function authenticateCustomerCredentials(
     return (
       c.email.toLowerCase() === cleanId ||
       (c.cpf && sanitizeCpf(c.cpf) === cleanDigits) ||
-      sanitizePhone(c.whatsapp) === cleanDigits
+      (cleanDigits !== "" && sanitizePhone(c.whatsapp) === cleanDigits)
     );
   });
 
@@ -645,17 +662,11 @@ export function authenticateCustomerCredentials(
     throw new Error("Nenhum cadastro encontrado com este e-mail ou CPF.");
   }
 
-  if (mode === "password") {
-    const hashed = hashPassword(secret);
-    if (customer.passwordHash && customer.passwordHash !== hashed) {
-      throw new Error("Senha incorreta. Verifique os dados ou solicite código via WhatsApp.");
-    }
-  } else {
-    // Mode code
-    if (!customer.verification || customer.verification.code !== secret.trim()) {
-      throw new Error("Código de segurança inválido.");
-    }
+  if (mode === "code") return verifyWhatsAppVerificationCode(identifier, secret);
+  if (!customer.verification?.verified || !verifyPassword(secret, customer.passwordHash)) {
+    throw new Error("Credenciais inválidas ou WhatsApp não confirmado.");
   }
+  if (!customer.passwordHash?.startsWith("scrypt:")) customer.passwordHash = hashPassword(secret);
 
   customer.lastActiveAt = new Date().toISOString();
   customer.membership = computeMembershipStatus(customer);

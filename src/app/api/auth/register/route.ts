@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerCustomerProfile, CustomerAddress } from "@/lib/customerStore";
 import { sendWhatsAppVerificationCode } from "@/lib/wacliService";
-import { saveCustomerToPostgres } from "@/lib/postgres";
+import { customerSessionConfigured } from "@/lib/customerSession";
+import { findCustomerInPostgres, getPostgresPool, saveCustomerToPostgres } from "@/lib/postgres";
 
 export async function POST(request: NextRequest) {
+  if (!customerSessionConfigured()) {
+    return NextResponse.json({ ok: false, error: "Cadastro temporariamente indisponível." }, { status: 503 });
+  }
   try {
     const body = await request.json();
     const {
@@ -14,6 +18,11 @@ export async function POST(request: NextRequest) {
       password = "",
       address,
     } = body;
+
+    if ([fullName, whatsapp, cpf, email, password].some((value) => typeof value !== "string") ||
+        fullName.length > 160 || email.length > 254 || whatsapp.length > 40 || cpf.length > 25 || password.length > 256) {
+      return NextResponse.json({ ok: false, error: "Confira os dados do cadastro." }, { status: 400 });
+    }
 
     // Validação dos campos obrigatórios
     if (!fullName.trim()) {
@@ -65,6 +74,11 @@ export async function POST(request: NextRequest) {
       state: String(address.state).trim().toUpperCase(),
     };
 
+    const db = getPostgresPool();
+    if (db && (await findCustomerInPostgres(email) || await findCustomerInPostgres(cleanCpf))) {
+      return NextResponse.json({ ok: false, error: "Cadastro já existente. Entre ou solicite outro código." }, { status: 409 });
+    }
+
     // Registra o perfil e gera o código de 6 dígitos
     const { customer, verificationCode } = registerCustomerProfile({
       fullName: fullName.trim(),
@@ -75,71 +89,24 @@ export async function POST(request: NextRequest) {
       address: customerAddress,
     });
 
-    // Persiste imediatamente no banco de dados PostgreSQL
-    try {
-      await saveCustomerToPostgres(customer, verificationCode);
-    } catch (pgErr) {
-      console.warn("[Register Route] Aviso: Falha ao persistir no PostgreSQL (contingência CRM JSON mantida):", pgErr);
+    if (db) {
+      const persisted = await saveCustomerToPostgres(customer, verificationCode);
+      if (!persisted.success) {
+        return NextResponse.json({ ok: false, error: "Não foi possível concluir o cadastro." }, { status: 409 });
+      }
     }
 
-    // Dispara via WACLI (WhatsApp)
-    const wacliResult = await sendWhatsAppVerificationCode({
-      phone: customer.whatsapp,
-      code: verificationCode,
-      customerName: customer.fullName,
+    const delivery = await sendWhatsAppVerificationCode({
+      phone: customer.whatsapp, code: verificationCode, customerName: customer.fullName,
     });
-
-    const isSelf = Boolean(wacliResult.selfNumberError);
-
-    // Cria token seguro de sessão do cliente (já liberado com 7 dias de Degustação VIP)
-    const sessionPayload = {
-      customerId: customer.id,
-      fullName: customer.fullName,
-      email: customer.email,
-      whatsapp: customer.whatsapp,
-      cpf: customer.cpf,
-      membershipStatus: customer.membership?.status || "TRIAL_ACTIVE",
-      trialExpiresAt: customer.membership?.trialExpiresAt,
-      issuedAt: new Date().toISOString(),
-    };
-
-    const sessionCookieValue = Buffer.from(JSON.stringify(sessionPayload)).toString("base64");
-
-    const response = NextResponse.json({
+    return NextResponse.json({
       ok: true,
-      message: isSelf
-        ? `Atenção: O número informado (${customer.whatsapp}) é o próprio número de envio do WhatsApp da agência (+55 62 99347-3656). O WhatsApp não permite o envio para o próprio número. Use o código exibido abaixo para validar seu acesso de teste.`
-        : `Cadastro realizado com sucesso! Enviamos um código de segurança de 6 dígitos para o seu WhatsApp (${customer.whatsapp}).`,
       customerId: customer.id,
-      email: customer.email,
-      whatsapp: customer.whatsapp,
-      selfNumberError: isSelf,
-      // Se for o próprio número ou mock, exibe o código para não travar o teste do administrador
-      previewCode: (isSelf || wacliResult.mockMode || !wacliResult.success) ? verificationCode : undefined,
-      customer: {
-        id: customer.id,
-        fullName: customer.fullName,
-        email: customer.email,
-        whatsapp: customer.whatsapp,
-        cpf: customer.cpf,
-        address: customer.address,
-        membership: customer.membership,
-      },
-    });
-
-    response.cookies.set("hospede_customer_session", sessionCookieValue, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30 dias
-    });
-
-    return response;
-  } catch (err: unknown) {
-    const errorMsg =
-      err instanceof Error ? err.message : "Erro interno ao processar cadastro.";
-    return NextResponse.json({ ok: false, error: errorMsg }, { status: 400 });
+      message: delivery.success && !delivery.mockMode
+        ? "Enviamos um código para o seu WhatsApp. Confirme o código para entrar."
+        : "Cadastro pendente de confirmação. Não foi possível enviar o código agora. Solicite o reenvio.",
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch {
+    return NextResponse.json({ ok: false, error: "Não foi possível concluir o cadastro." }, { status: 400 });
   }
 }
-

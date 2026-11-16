@@ -1,3 +1,4 @@
+import { authenticatedCustomer } from "@/lib/customerSession";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerOmnibeesConfig } from "@/lib/serverEnv";
 import {
@@ -64,12 +65,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await authenticatedCustomer(request);
+    if (!session) return NextResponse.json({ ok: false, error: "Entre na sua conta." }, { status: 401 });
     const body = await request.json();
+    const { id, fullName, email, whatsapp } = session;
     const {
-      id,
-      fullName = "",
-      email = "",
-      whatsapp = "",
       cityOrigin = "São Paulo (SP)",
       preferredDestinations = [],
       travelProfile = "Casal",

@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { subscribeCustomerToClub, getCustomerSessionProfile } from "@/lib/customerStore";
+import { subscribeCustomerToClub } from "@/lib/customerStore";
+
+import { authenticatedCustomer } from "@/lib/customerSession";
 
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("hospede_customer_session")?.value;
-    let customerId = "";
-
-    if (sessionCookie) {
-      try {
-        const decoded = Buffer.from(sessionCookie, "base64").toString("utf-8");
-        const parsed = JSON.parse(decoded);
-        customerId = parsed.customerId;
-      } catch {
-        // ignore
-      }
-    }
-
+    const session = await authenticatedCustomer(request);
+    const targetCustomerId = session?.id;
     const body = await request.json().catch(() => ({}));
-    const targetCustomerId = body.customerId || customerId;
     const paymentMethod: "PIX" | "CARD" = body.paymentMethod === "CARD" ? "CARD" : "PIX";
 
     if (!targetCustomerId) {

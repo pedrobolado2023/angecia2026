@@ -3,7 +3,8 @@ import { CURATED_HOTELS, CuratedHotel } from "@/data/vellutoCatalog";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { upsertCustomerProfile, recordCustomerActivity } from "@/lib/customerStore";
 import { processMercadoPagoPayment } from "@/lib/mercadopago";
-import { saveBookingToPostgres } from "@/lib/postgres";
+import { authenticatedCustomer } from "@/lib/customerSession";
+import { ensurePostgresTables, saveBookingToPostgres } from "@/lib/postgres";
 import { createHotelbedsBooking } from "@/lib/hotelbeds";
 
 // Memória em tempo de execução para controle atômico de estoque (Anti-Overbooking Gate 3)
@@ -15,6 +16,8 @@ CURATED_HOTELS.forEach((h) => {
 export async function POST(request: NextRequest) {
   const startMs = performance.now();
   try {
+    const customer = await authenticatedCustomer(request);
+    if (!customer) return NextResponse.json({ error: "Entre na sua conta para reservar." }, { status: 401 });
     const body = await request.json();
     const {
       hotelId,
@@ -74,10 +77,13 @@ export async function POST(request: NextRequest) {
       primaryLastName?.trim() ||
       guestName?.split(" ").slice(1).join(" ") ||
       "Titular";
-    const resolvedEmail =
-      primaryEmail?.trim().toLowerCase() ||
-      guestEmail?.trim().toLowerCase() ||
-      "cliente@hospedeclub.com.br";
+    const resolvedEmail = customer.email.toLowerCase();
+    if (primaryEmail && (typeof primaryEmail !== "string" || primaryEmail.trim().toLowerCase() !== resolvedEmail)) {
+      return NextResponse.json({ error: "Use o e-mail da sua conta para reservar." }, { status: 400 });
+    }
+    if (!(await ensurePostgresTables())) {
+      return NextResponse.json({ error: "Reservas temporariamente indisponíveis." }, { status: 503 });
+    }
     const resolvedWhatsapp =
       primaryWhatsapp?.trim() || guestWhatsapp?.trim() || "+55 (11) 99812-4400";
     const resolvedCpf = primaryCpf?.trim() || "000.000.000-00";
@@ -272,6 +278,9 @@ export async function POST(request: NextRequest) {
     let pgPersistResult: { success: boolean; error?: string } = { success: false, error: "" };
     try {
       pgPersistResult = await saveBookingToPostgres({
+        ownerMemberCode: customer.id,
+        hotelbedsReference: hotelbedsBookingResult?.ok && !hotelbedsBookingResult.isSimulation
+          ? hotelbedsBookingResult.bookingReference : undefined,
         bookingCode: bookingId,
         voucherCode: generatedVoucher,
         hotelId: hotel.id,
