@@ -143,7 +143,8 @@ O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, voc�
 1. No seu Projeto no Easypanel, clique em **+ New Service** → **Compose**.
 2. Conecte ao repositório `pedrobolado2023/angecia2026`.
 3. Aponte para o arquivo `docker-compose.yml`.
-4. O Easypanel subirá os dois serviços interligados com uma única ação.
+4. Configure `POSTGRES_PASSWORD` e `DATABASE_URL` antes do deploy. A URL deve usar o host interno `postgres`, o usuário e o banco do serviço. Codifique caracteres especiais da senha na URL.
+5. O PostgreSQL fica acessível na rede interna do Compose. Para bancos gerenciados externos, configure `sslmode=verify-full` e a CA do provedor quando necessário. Para o serviço privado do Easypanel, use o endereço interno fornecido em **Credentials**.
 
 ---
 

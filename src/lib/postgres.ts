@@ -16,7 +16,6 @@ let tablesInitialized = false;
 /**
  * Higieniza a DATABASE_URL. Se a senha contiver caracteres especiais como '@',
  * codifica automaticamente para '%40' evitando que o parser quebre o hostname.
- *       -> postgres://postgres:142635Pe%40@agentesia_postgres:5432/agentesia
  */
 export function sanitizeDatabaseUrl(url?: string): string {
   if (!url) return "";
@@ -34,25 +33,36 @@ export function sanitizeDatabaseUrl(url?: string): string {
   return trimmed;
 }
 
+export function databaseUrlWithVerifiedTls(rawUrl: string): string {
+  const url = new URL(sanitizeDatabaseUrl(rawUrl));
+  const mode = url.searchParams.get("sslmode");
+  const ssl = url.searchParams.get("ssl");
+  const cloudHost = /(?:^|\.)(?:supabase\.(?:co|com)|neon\.tech|render\.com|easypanel\.host)$/i.test(url.hostname);
+
+  if (mode === "no-verify" || (mode && !["disable", "allow", "prefer", "require", "verify-ca", "verify-full"].includes(mode))) {
+    throw new Error("Modo TLS do PostgreSQL inválido. Use sslmode=verify-full para conexões externas.");
+  }
+  if (cloudHost && (mode === "disable" || ssl === "false")) {
+    throw new Error("O PostgreSQL externo precisa de TLS com certificado verificado.");
+  }
+  if (mode !== "disable" && (cloudHost || ssl === "true" || Boolean(mode) ||
+      url.searchParams.has("sslrootcert") || url.searchParams.has("sslcert") || url.searchParams.has("sslkey"))) {
+    url.searchParams.set("sslmode", "verify-full");
+    url.searchParams.delete("ssl");
+    url.searchParams.delete("uselibpqcompat");
+  }
+  return url.toString();
+}
+
 export function getPostgresPool(): Pool | null {
   const rawDbUrl = process.env.DATABASE_URL?.trim();
   if (!rawDbUrl) {
     return null;
   }
 
-  const dbUrl = sanitizeDatabaseUrl(rawDbUrl);
-
   if (!pool) {
-    const isCloud =
-      dbUrl.includes("supabase") ||
-      dbUrl.includes("render") ||
-      dbUrl.includes("neon") ||
-      dbUrl.includes("easypanel") ||
-      dbUrl.includes("sslmode=require");
-
     pool = new Pool({
-      connectionString: dbUrl,
-      ssl: isCloud ? { rejectUnauthorized: false } : undefined,
+      connectionString: databaseUrlWithVerifiedTls(rawDbUrl),
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,

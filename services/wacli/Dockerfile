@@ -3,7 +3,7 @@
 # Utiliza Debian Slim (glibc) para compatibilidade nativa com o binário Go CGO
 # ==============================================================================
 
-FROM node:20-slim
+FROM node:24-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -23,8 +23,8 @@ RUN ARCH=$(uname -m) && \
     chmod +x /usr/local/bin/wacli
 
 # Instala dependências do gateway a partir de services/wacli/
-COPY services/wacli/package.json ./package.json
-RUN npm install --production
+COPY services/wacli/package.json services/wacli/package-lock.json ./
+RUN npm ci --omit=dev
 
 COPY services/wacli/server.js ./server.js
 

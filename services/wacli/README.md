@@ -48,7 +48,8 @@ No seu serviço do site principal no Easypanel (`agentesia-frontagencia2026`):
    WACLI_ENDPOINT="http://hospede-wacli:3001/send"
    ```
    *(Ou a URL pública `https://wacli.q-aura.com.br/send`)*
-3. Clique em **Save & Redeploy**.
+3. Configure `WACLI_API_KEY` com o mesmo segredo no frontend e no gateway.
+4. Clique em **Save & Redeploy** nos dois serviços.
 
 Pronto! Todas as mensagens de:
 - Código de ativação VIP de 6 dígitos;

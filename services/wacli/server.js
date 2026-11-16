@@ -1,11 +1,12 @@
 const express = require("express");
-const { spawn, exec } = require("child_process");
+const { spawn, exec, execFile } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
 const path = require("path");
 const QRCode = require("qrcode");
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const app = express();
 app.use(express.json());
 
@@ -122,7 +123,7 @@ async function checkAuthStatus() {
 
 // Middleware de validação do Bearer Token
 function authMiddleware(req, res, next) {
-  if (!API_SECRET) return next();
+  if (!API_SECRET) return res.status(503).json({ error: "Gateway sem credencial de envio configurada." });
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== `Bearer ${API_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized. Token WACLI inválido." });
@@ -133,17 +134,19 @@ function authMiddleware(req, res, next) {
 // Endpoint de Envio de Mensagens
 app.post("/send", authMiddleware, async (req, res) => {
   const { to, message } = req.body;
-  if (!to || !message) {
+  if (typeof to !== "string" || typeof message !== "string" || !message.trim() || message.length > 4096) {
     return res.status(400).json({ error: "Parâmetros 'to' e 'message' são obrigatórios." });
   }
 
   const cleanPhone = to.replace(/\D/g, "");
-  const target = cleanPhone.includes("@") ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
+  if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+    return res.status(400).json({ error: "Número de WhatsApp inválido." });
+  }
+  const target = `${cleanPhone}@s.whatsapp.net`;
 
   try {
-    console.log(`[WACLI SEND] Disparando WhatsApp para ${target}...`);
-    const { stdout, stderr } = await execAsync(
-      `wacli send text --to "${target}" --message "${message.replace(/"/g, '\\"')}"`,
+    await execFileAsync(
+      "wacli", ["send", "text", "--to", target, "--message", message],
       {
         env: { ...process.env, WACLI_STORE_DIR: STORE_DIR },
         timeout: 25000,
@@ -153,13 +156,14 @@ app.post("/send", authMiddleware, async (req, res) => {
     return res.json({
       success: true,
       messageId: `WACLI-${Date.now()}`,
-      output: (stdout || stderr || "").trim(),
     });
   } catch (err) {
-    console.error("[WACLI SEND ERROR]", err);
+    const details = String(err.stderr || err.stdout || "");
+    const selfNumber = /linked account itself|self-messages/i.test(details);
+    console.error("[WACLI SEND ERROR]", selfNumber ? "Destino é o próprio número do gateway." : "Falha no envio.");
     return res.status(500).json({
       success: false,
-      error: err.message,
+      error: selfNumber ? "linked account itself" : "Falha no envio por WhatsApp.",
     });
   }
 });
