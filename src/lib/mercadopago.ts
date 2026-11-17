@@ -11,6 +11,7 @@ export type MercadoPagoPayment = {
   externalReference: string;
   amountCents: number;
   currency: string;
+  installments?: number;
   pix?: { qrCode: string; qrCodeBase64: string; ticketUrl?: string; expiresAt?: string };
 };
 
@@ -90,6 +91,7 @@ async function normalizePayment(data: any, mode: CheckoutMode): Promise<MercadoP
   const amountCents = cents(data.total_amount);
   const currency = data.currency_id ?? data.currency ?? (data.country_code === "BRA" ? "BRL" : "");
   const refunded = Boolean(data.transactions?.refunds?.length) || [data.status, payment?.status].includes("refunded");
+  const installments = paymentMethod?.installments;
   let status = "review";
   if (!refunded && data.status === "processed" && data.status_detail === "accredited" &&
       payment?.status === "processed" && payment.status_detail === "accredited" &&
@@ -110,6 +112,7 @@ async function normalizePayment(data: any, mode: CheckoutMode): Promise<MercadoP
   return {
     id: data.id, status, mode, method, currency, externalReference: data.external_reference,
     amountCents: cents(payment?.amount) === amountCents ? amountCents : NaN,
+    installments: method === "card" && Number.isInteger(installments) && installments > 0 ? installments : undefined,
     pix,
   };
 }

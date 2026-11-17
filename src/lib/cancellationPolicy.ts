@@ -32,6 +32,28 @@ export interface ResolvedCancellationPolicy {
   penaltyPercentage?: number;
 }
 
+export type BookingCancellationPolicy = {
+  source: "hotel" | "hospede-club";
+  lines: string[];
+};
+
+export function hotelCancellationPolicy(
+  policies: { amount: string; from: string }[] | undefined,
+  currency: string | undefined,
+  rateClass?: string,
+): BookingCancellationPolicy | undefined {
+  if (policies?.length) {
+    return {
+      source: "hotel",
+      lines: policies.map(({ from, amount }) =>
+        `A partir de ${from} (horário do destino): multa de ${amount}${currency ? ` ${currency}` : ""}.`),
+    };
+  }
+  if (rateClass === "NRF") {
+    return { source: "hotel", lines: ["Tarifa não reembolsável conforme as condições do hotel."] };
+  }
+}
+
 export const HOSPEDE_CLUB_STANDARD_TERMS = {
   title: "Política de Cancelamento e Alteração de Data",
   clause1: "1º) Cancelamento:\na) Gratuito: Se o cancelamento for feito até 14 dias antes do check-in.\nb) 50% do valor total da reserva: se o cancelamento ocorrer até 01 dia antes do check-in.\nc) 100% do valor total da reserva: se o cancelamento ocorrer no mesmo dia do check-in.",

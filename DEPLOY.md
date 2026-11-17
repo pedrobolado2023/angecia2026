@@ -152,6 +152,9 @@ O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, voc�
 
 ### Checkout Mercado Pago e Hotelbeds
 
+- Para habilitar o mTLS de Booking no serviço web, configure `HOTELBEDS_MTLS_ENABLED=true`. O host mTLS é escolhido por `HOTELBEDS_ENVIRONMENT`. Mantenha `HOTELBEDS_ENDPOINT_URL` com o host configurado para a Content API.
+- Para o certificado, preencha `HOTELBEDS_MTLS_CERT_PATH` com o caminho visível dentro do contêiner ou `HOTELBEDS_MTLS_CERT_PEM` com seu conteúdo. Para a chave privada, use `HOTELBEDS_MTLS_KEY_PATH` ou `HOTELBEDS_MTLS_KEY_PEM`. Se a chave for criptografada, configure `HOTELBEDS_MTLS_KEY_PASSWORD`. Carregue esses valores em variáveis privadas ou arquivos montados no serviço web.
+
 - Cadastre uma aplicação **Checkout Transparente via Orders** no Mercado Pago. Em homologação, use `CHECKOUT_MODE=test`, `HOTELBEDS_ENVIRONMENT=test`, `MERCADOPAGO_TEST_ACCESS_TOKEN` e `MERCADOPAGO_TEST_PUBLIC_KEY` com as credenciais da aba de teste dessa aplicação. O prefixo `APP_USR-` aparece também em credenciais de teste.
 - Em produção, habilite `CHECKOUT_MODE=live` somente com credenciais de produção dos dois provedores e depois de homologar Pix e cartão. Não misture cobrança real com reservas de teste.
 - No painel do Mercado Pago, configure o evento **Orders** com a URL HTTPS completa do endpoint `/api/webhooks/payment`. Use o segredo de assinatura da configuração de teste em `MERCADOPAGO_TEST_WEBHOOK_SECRET` e o da configuração de produção em `MERCADOPAGO_WEBHOOK_SECRET`. Em produção, use `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_PUBLIC_KEY` da aplicação.

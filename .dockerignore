@@ -8,3 +8,15 @@ node_modules
 backend
 data/*.json
 *.tsbuildinfo
+*.pdf
+output/pdf
+
+# Hotelbeds mTLS
+**/*.pem
+**/*.key
+**/*.csr
+**/*.crt
+**/*.cer
+**/*.pfx
+**/*.p12
+**/csr.conf

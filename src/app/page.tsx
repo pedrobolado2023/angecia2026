@@ -15,7 +15,7 @@ import { tokenizeCard } from "@/lib/mercadoPagoCard";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
 import { isValidCPF } from "@/lib/cpfValidator";
 import { prepareHotelbedsPhotos } from "@/lib/hotelbedsPhotos";
-import { resolveRoomCancellationPolicy } from "@/lib/cancellationPolicy";
+import { resolveRoomCancellationPolicy, type BookingCancellationPolicy } from "@/lib/cancellationPolicy";
 import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
@@ -58,8 +58,7 @@ import {
   X,
   Sliders,
   Bell,
-  Printer,
-  Share2,
+  Download,
   Trash2,
   Search,
   AlertOctagon,
@@ -313,7 +312,10 @@ export default function HospedeClubApp() {
     [selectedHotel, selectedRoomId]
   );
 
-  const [checkoutQuote, setCheckoutQuote] = useState<{ orderId: string; amount: number; fingerprint: string; publicKey?: string } | null>(null);
+  const [checkoutQuote, setCheckoutQuote] = useState<{
+    orderId: string; amount: number; fingerprint: string; publicKey?: string;
+    conditions?: { cancellationPolicy?: BookingCancellationPolicy; rateComments?: string };
+  } | null>(null);
   const [activeOrderId, setActiveOrderId] = useState("");
   const [checkoutState, setCheckoutState] = useState("");
   const [confirmedStay, setConfirmedStay] = useState<{ hotelName: string; roomName: string; checkIn: string; checkOut: string; holder: string } | null>(null);
@@ -3395,6 +3397,15 @@ export default function HospedeClubApp() {
                   <div className="rounded-xl border border-[#E5DEC9] bg-[#FAF7F2] p-4 text-sm">
                     <strong>Total confirmado da estadia: {formatBRLCents(currentCheckoutQuote.amount)}</strong>
                     {paymentMethod === "card" && <p>{selectedInstallments}x de aproximadamente {formatBRLCents(currentCheckoutQuote.amount / selectedInstallments)}</p>}
+                    {currentCheckoutQuote.conditions?.cancellationPolicy && (
+                      <div className="mt-2">
+                        <strong>{currentCheckoutQuote.conditions.cancellationPolicy.source === "hotel" ? "Cancelamento da tarifa do hotel" : "Política de cancelamento do Hóspede Club"}</strong>
+                        {currentCheckoutQuote.conditions.cancellationPolicy.lines.map((rule, index) => <p key={index}>{rule}</p>)}
+                      </div>
+                    )}
+                    {currentCheckoutQuote.conditions?.rateComments && (
+                      <p className="mt-2 whitespace-pre-wrap">{currentCheckoutQuote.conditions.rateComments}</p>
+                    )}
                   </div>
                 )}
                 {activeOrderId && webhookStatusText && (
@@ -3443,11 +3454,10 @@ export default function HospedeClubApp() {
                     <p>Titular: {confirmedStay.holder}</p>
 
                     {/* Cláusula Legal Obrigatória do Fornecedor para Certificação Hotelbeds APItude */}
-                    <div className="mt-2 pt-2 border-t border-[#EAE3D5] text-[10px] text-[#7A828A] leading-relaxed">
+                    {bookingSupplierRemarks && <div className="mt-2 pt-2 border-t border-[#EAE3D5] text-[10px] text-[#7A828A] leading-relaxed">
                       <strong className="text-[#182026] block mb-0.5">Nota Legal do Fornecedor (Supplier Notice):</strong>
-                      {bookingSupplierRemarks ||
-                        `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company, details of which can be provided upon request. VAT: B-60292723 Reference: ${bookingConfirmedVoucher}`}
-                    </div>
+                      {bookingSupplierRemarks}
+                    </div>}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#EAE3D5]">
@@ -3463,23 +3473,12 @@ export default function HospedeClubApp() {
                     }} className="px-4 py-2 rounded-xl bg-[#FAF7F2] text-xs text-[#182026]">
                       Buscar outra hospedagem
                     </button>
-                    <button
-                      onClick={() => window.print()}
+                    <a
+                      href={`/api/bookings/voucher?orderId=${encodeURIComponent(activeOrderId)}`}
                       className="px-4 py-2 rounded-xl bg-[#B8863B] text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>Salvar Voucher PDF</span>
-                    </button>
-                    <a
-                      href={`https://wa.me/?text=${encodeURIComponent(
-                        `Voucher Hóspede Club [${bookingConfirmedVoucher}] confirmado para ${confirmedStay.hotelName}. Titular: ${confirmedStay.holder}.`
-                      )}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-4 py-2 rounded-xl bg-[#FAF7F2] border border-[#E2D9C8] text-[#182026] text-xs flex items-center gap-1.5"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>Enviar no WhatsApp</span>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Baixar voucher PDF</span>
                     </a>
                   </div>
                 </div>

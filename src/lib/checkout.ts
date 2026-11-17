@@ -6,6 +6,7 @@ import { ensurePostgresTables, getPostgresPool, saveBookingToPostgres, type Save
 import { type CustomerCRMRecord } from "./customerStore";
 import { type CheckoutMode, type MercadoPagoPayment } from "./mercadopago";
 import { isValidCPF } from "./cpfValidator";
+import { hotelCancellationPolicy, resolveRoomCancellationPolicy, type BookingCancellationPolicy } from "./cancellationPolicy";
 
 export type CheckoutState = "quoted" | "paying" | "pending" | "rejected" | "confirming" | "confirmed" | "review";
 
@@ -16,6 +17,18 @@ type CheckoutPayload = {
   method: "pix" | "card";
   checkOut: string;
   mode: CheckoutMode;
+  voucherDetails?: VoucherDetails;
+};
+
+type VoucherDetails = {
+  address?: string;
+  category?: string;
+  destination?: string;
+  board?: string;
+  rateComments?: string;
+  currency?: string;
+  cancellationPolicies?: { amount: string; from: string }[];
+  cancellationPolicy?: BookingCancellationPolicy;
 };
 
 export type CheckoutOrder = {
@@ -58,10 +71,12 @@ function date(value: unknown) {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? parsed.getTime() : NaN;
 }
 
-function hotelbedsRatePlan(key: string) {
-  const parts = key.split("|");
-  if (parts.length < 9 || !/^\d{8}$/.test(parts[0]) || !/^\d{8}$/.test(parts[1])) return null;
-  return parts.slice(0, 9).join("|");
+function supplierPolicies(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const policies = value.flatMap((item) => typeof item?.from === "string" && item.from.trim() !== "" &&
+    (typeof item.amount === "string" || typeof item.amount === "number") && String(item.amount) !== ""
+    ? [{ amount: String(item.amount), from: item.from }] : []);
+  return policies.length ? policies : undefined;
 }
 
 export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Record<string, unknown>, mode: CheckoutMode) {
@@ -132,12 +147,8 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
   });
   const hotel = result.ok && !result.isSimulation && result.hotels.find((item) => Number(item.code) === hotelCode);
   const room = hotel && hotel.rooms.find((item) => item.code === roomCode);
-  const candidates = room && room.rates.filter((item) =>
+  const rate = room && room.rates.find((item) => item.rateKey === requestedRateKey && !item.packaging &&
     item.boardCode === body.boardCode && item.rateClass === body.rateClass && item.paymentType === "AT_WEB");
-  const requestedPlan = hotelbedsRatePlan(requestedRateKey);
-  const samePlan = candidates && requestedPlan ? candidates.filter((item) => hotelbedsRatePlan(item.rateKey) === requestedPlan) : [];
-  const rate = candidates && (candidates.find((item) => item.rateKey === requestedRateKey) ||
-    (samePlan.length === 1 ? samePlan[0] : undefined));
   if (!hotel || !room || !rate || !["BRL", "EUR", "USD", "GBP"].includes(hotel.originalCurrency || "")) {
     throw new CheckoutError("A tarifa selecionada não está mais disponível. Faça uma nova busca.", 409);
   }
@@ -145,6 +156,12 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
   let selling = rate.sellingRate;
   let mandatory = rate.hotelMandatory;
   let rateKey = rate.rateKey;
+  let rateClass = rate.rateClass;
+  const voucherDetails: VoucherDetails = {
+    address: hotel.address, category: hotel.categoryName, destination: hotel.destinationName,
+    board: rate.boardName || rate.boardCode, rateComments: text(rate.rateComments, 12000), currency: hotel.originalCurrency,
+    cancellationPolicies: supplierPolicies(rate.supplierCancellationPolicies),
+  };
   if (rate.rateType === "RECHECK") {
     const checked = await checkHotelbedsRate(rateKey);
     const checkedHotel = checked.ok ? checked.rate : null;
@@ -152,16 +169,23 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
     const checkedRates = checkedRoom?.rates?.filter((item: any) => item.boardCode === rate.boardCode && item.rateClass === rate.rateClass);
     const finalRate = checkedRates?.length === 1 ? checkedRates[0] : null;
     if (checkedHotel?.isSimulation || Number(checkedHotel?.code) !== hotelCode || !finalRate?.rateKey ||
-        finalRate.rateType !== "BOOKABLE" || (checkedHotel.currency && checkedHotel.currency !== hotel.originalCurrency)) {
+        finalRate.rateType !== "BOOKABLE" || finalRate.packaging === true ||
+        (checkedHotel.currency && checkedHotel.currency !== hotel.originalCurrency)) {
       throw new CheckoutError("Não foi possível confirmar a tarifa. Faça uma nova busca.", 409);
     }
     net = Math.round(Number(finalRate.net) * (rate.fxRate || 1) * 100) / 100;
     selling = finalRate.sellingRate ? Math.round(Number(finalRate.sellingRate) * (rate.fxRate || 1) * 100) / 100 : undefined;
     mandatory = finalRate.hotelMandatory;
     rateKey = finalRate.rateKey;
+    rateClass = finalRate.rateClass;
+    voucherDetails.cancellationPolicies = supplierPolicies(finalRate.cancellationPolicies) ?? voucherDetails.cancellationPolicies;
+    voucherDetails.rateComments = text(finalRate.rateComments, 12000) || voucherDetails.rateComments;
   } else if (rate.rateType !== "BOOKABLE") {
     throw new CheckoutError("A tarifa não está disponível para reserva.", 409);
   }
+  voucherDetails.cancellationPolicy = hotelCancellationPolicy(voucherDetails.cancellationPolicies, voucherDetails.currency, rateClass) ?? {
+    source: "hospede-club", lines: [resolveRoomCancellationPolicy(undefined, checkIn).details],
+  };
 
   if (!Number.isFinite(net) || net <= 0 || (mandatory && (!selling || selling < net))) {
     throw new CheckoutError("Não foi possível validar o valor da estadia.", 409);
@@ -184,7 +208,7 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
   const id = randomUUID();
   const payload: CheckoutPayload = {
     mode,
-    method, rateKey, paxes, checkOut,
+    method, rateKey, paxes, checkOut, voucherDetails,
     booking: {
       ownerMemberCode: customer.id, hotelId: `hotelbeds-${hotelCode}`, hotelName: hotel.name,
       roomId: room.code, roomName: room.name, checkInDate: checkIn, nightsCount: nights,
@@ -220,6 +244,10 @@ export function checkoutResponse(order: CheckoutOrder) {
     orderId: order.id, state: isStalled ? "review" : order.state,
     amount: order.amount_cents / 100, expiresAt: order.expires_at, method: order.payload.method,
     voucherCode: order.state === "confirmed" ? order.voucher : undefined,
+    conditions: order.state === "quoted" ? {
+      cancellationPolicy: order.payload.voucherDetails?.cancellationPolicy,
+      rateComments: order.payload.voucherDetails?.rateComments,
+    } : undefined,
     supplierRemarks: order.state === "confirmed" ? order.supplier_remarks : undefined,
     stay: {
       hotelName: order.payload.booking.hotelName, roomName: order.payload.booking.roomName,
@@ -238,7 +266,8 @@ export async function reconcileCheckoutPayment(payment: MercadoPagoPayment) {
   if (["confirming", "confirmed", "review", "rejected"].includes(order.state)) return order;
   const db = await checkoutDb();
   const verified = payment.amountCents === order.amount_cents && payment.currency === "BRL" &&
-    payment.method === order.payload.method && payment.mode === order.payload.mode;
+    payment.method === order.payload.method && payment.mode === order.payload.mode &&
+    (payment.installments === undefined || payment.installments === order.payload.booking.installments);
   const next = !verified || payment.status === "review" ? "review" : payment.status === "approved" ? "confirming" :
     ["pending", "in_process", "authorized"].includes(payment.status) ? "pending" : "rejected";
   const { rows: [claimed] } = await db.query<CheckoutOrder>(
@@ -254,14 +283,34 @@ export async function reconcileCheckoutPayment(payment: MercadoPagoPayment) {
     paxes: claimed.payload.paxes,
   });
   const voucher = supplier.ok && !supplier.isSimulation && supplier.status === "CONFIRMED" ? supplier.bookingReference : undefined;
+  const confirmedHotel = supplier.rawBooking?.hotel;
+  const confirmedRoom = confirmedHotel?.rooms?.[0];
+  const confirmedRate = confirmedRoom?.rates?.[0];
+  const details = claimed.payload.voucherDetails;
+  const confirmedPolicies = supplierPolicies(confirmedRate?.cancellationPolicies);
+  const confirmedCurrency = text(confirmedHotel?.currency, 3) || details?.currency;
+  const voucherDetails: VoucherDetails = {
+    ...details,
+    address: text(confirmedHotel?.address?.content ?? confirmedHotel?.address, 500) || details?.address,
+    category: text(confirmedHotel?.categoryName) || details?.category,
+    destination: text(confirmedHotel?.destinationName) || details?.destination,
+    board: text(confirmedRate?.boardName) || details?.board || text(confirmedRate?.boardCode),
+    currency: confirmedPolicies ? confirmedCurrency : details?.currency,
+    rateComments: text(confirmedRate?.rateComments, 12000) || details?.rateComments,
+    cancellationPolicies: confirmedPolicies ?? details?.cancellationPolicies,
+    cancellationPolicy: hotelCancellationPolicy(confirmedPolicies, confirmedCurrency) ??
+      hotelCancellationPolicy(details?.cancellationPolicies, details?.currency, confirmedRate?.rateClass) ??
+      details?.cancellationPolicy,
+  };
   const saved = voucher ? await saveBookingToPostgres({
     ...booking, bookingCode: claimed.id, voucherCode: voucher, hotelbedsReference: voucher,
     paymentStatus: "APPROVED", mpPaymentId: payment.id, mpStatus: payment.status,
   }) : null;
   const { rows: [complete] } = await db.query<CheckoutOrder>(
-    `UPDATE checkout_orders SET state = $2, voucher = $3, supplier_remarks = $4, updated_at = NOW()
+    `UPDATE checkout_orders SET state = $2, voucher = $3, supplier_remarks = $4,
+      payload = payload || jsonb_build_object('voucherDetails', $5::jsonb), updated_at = NOW()
       WHERE id = $1 AND state = 'confirming' RETURNING *`,
-    [claimed.id, saved?.success ? "confirmed" : "review", voucher || null, supplier.supplierRemarks || null]
+    [claimed.id, saved?.success ? "confirmed" : "review", voucher || null, supplier.supplierRemarks || null, voucherDetails]
   );
   return complete;
 }

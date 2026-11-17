@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { fetchLiveExchangeRates } from "./currency";
+import { fetchHotelbedsBooking, hotelbedsBookingBaseUrl } from "./hotelbedsBookingTransport";
 
 export interface HotelbedsConfig {
   apiKey: string;
@@ -34,6 +35,9 @@ export interface HotelbedsRate {
   originalNet?: number;
   originalCurrency?: string;
   fxRate?: number;
+  packaging?: boolean;
+  rateComments?: string;
+  supplierCancellationPolicies?: { amount: string; from: string }[];
   cancellationPolicies?: Array<{
     amount: number;
     from: string;
@@ -238,6 +242,7 @@ export function maskHotelbedsKey(value: string): string {
 export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
   const start = performance.now();
   const cfg = getHotelbedsConfig();
+  const bookingBaseUrl = hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl);
 
   // Se não houver credenciais configuradas, retorna modo simulação
   if (!cfg.apiKey || !cfg.secret) {
@@ -245,7 +250,7 @@ export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
       ok: true,
       isSimulation: true,
       environment: cfg.environment,
-      baseUrl: cfg.baseUrl,
+      baseUrl: bookingBaseUrl,
       apiKeyMasked: "Modo Simulação Ativo (Insira HOTELBEDS_API_KEY)",
       latencyMs: 15,
       status: "SIMULATED_READY",
@@ -256,9 +261,9 @@ export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/status`;
+    const endpoint = `${bookingBaseUrl}/hotel-api/1.0/status`;
 
-    const res = await fetch(endpoint, {
+    const res = await fetchHotelbedsBooking(endpoint, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -275,7 +280,7 @@ export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
         ok: true,
         isSimulation: false,
         environment: cfg.environment,
-        baseUrl: cfg.baseUrl,
+        baseUrl: bookingBaseUrl,
         apiKeyMasked: maskHotelbedsKey(cfg.apiKey),
         latencyMs: elapsed,
         status: "ONLINE",
@@ -289,7 +294,7 @@ export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
       ok: false,
       isSimulation: false,
       environment: cfg.environment,
-      baseUrl: cfg.baseUrl,
+      baseUrl: bookingBaseUrl,
       apiKeyMasked: maskHotelbedsKey(cfg.apiKey),
       latencyMs: elapsed,
       status: `HTTP_${res.status}`,
@@ -301,7 +306,7 @@ export async function checkHotelbedsStatus(): Promise<HotelbedsStatusResponse> {
       ok: false,
       isSimulation: false,
       environment: cfg.environment,
-      baseUrl: cfg.baseUrl,
+      baseUrl: bookingBaseUrl,
       apiKeyMasked: maskHotelbedsKey(cfg.apiKey),
       latencyMs: Math.round(performance.now() - start),
       status: "NETWORK_ERROR",
@@ -547,7 +552,7 @@ export async function searchHotelbedsAvailability(params: {
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/hotels`;
+    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/hotels`;
 
     const requestPayload: Record<string, unknown> = {
       stay: {
@@ -572,7 +577,7 @@ export async function searchHotelbedsAvailability(params: {
       };
     }
 
-    const res = await fetch(endpoint, {
+    const res = await fetchHotelbedsBooking(endpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -597,7 +602,10 @@ export async function searchHotelbedsAvailability(params: {
     const codes = [...new Set<number>(hotelsList.map((h: any) => h.code))];
     const [liveRates, contentMap] = await Promise.all([
       fetchLiveExchangeRates(),
-      params.includeContent === false ? Promise.resolve({} as Record<number, HotelbedsContentData>) : fetchHotelbedsContent(codes),
+      params.includeContent === false ? Promise.resolve(Object.fromEntries(codes.flatMap((code) => {
+        const cached = contentCache.get(String(code));
+        return cached && Date.now() - cached.timestamp < CONTENT_CACHE_TTL_MS ? [[code, cached.data]] : [];
+      })) as Record<number, HotelbedsContentData>) : fetchHotelbedsContent(codes),
     ]);
 
     const mappedHotels: HotelbedsHotelResult[] = hotelsList.map((h: any) => {
@@ -664,6 +672,11 @@ export async function searchHotelbedsAvailability(params: {
                 paymentType: rate.paymentType,
                 boardCode: rate.boardCode,
                 boardName: rate.boardName,
+                packaging: rate.packaging === true,
+                rateComments: rate.rateComments,
+                supplierCancellationPolicies: (rate.cancellationPolicies || []).map((cp: any) => ({
+                  amount: String(cp.amount ?? ""), from: cp.from,
+                })),
                 cancellationPolicies: (rate.cancellationPolicies || []).map((cp: any) => ({
                   amount: Math.round(Number(cp.amount || 0) * fxRate * 100) / 100,
                   from: cp.from,
@@ -723,9 +736,9 @@ export async function checkHotelbedsRate(rateKey: string): Promise<{
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/checkrates`;
+    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/checkrates`;
 
-    const res = await fetch(endpoint, {
+    const res = await fetchHotelbedsBooking(endpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -786,7 +799,7 @@ export async function createHotelbedsBooking(booking: {
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/bookings`;
+    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/bookings`;
 
     const body = {
       holder: booking.holder,
@@ -813,7 +826,7 @@ export async function createHotelbedsBooking(booking: {
     };
 
     // Certificação Hotelbeds: Timeout mínimo de 60 segundos
-    const res = await fetch(endpoint, {
+    const res = await fetchHotelbedsBooking(endpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -840,9 +853,10 @@ export async function createHotelbedsBooking(booking: {
     if (!hbRef || data.booking?.status !== "CONFIRMED") {
       return { ok: false, isSimulation: false, error: "A Hotelbeds não confirmou a reserva." };
     }
-    const supplierRemarks =
-      data.booking?.supplier?.remarks ||
-      `Payable through Hotelbeds Incoming S.A.U., acting as agent for the service operating company. VAT: B-60292723. Reference: ${hbRef}`;
+    const supplier = data.booking?.supplier;
+    const supplierRemarks = typeof supplier?.name === "string" && typeof supplier?.vatNumber === "string"
+      ? `Payable through ${supplier.name}, acting as agent for the service operating company, details of which can be provided upon request. VAT: ${supplier.vatNumber} Reference: ${hbRef}`
+      : typeof supplier?.remarks === "string" ? supplier.remarks : undefined;
 
     return {
       ok: true,
@@ -886,9 +900,9 @@ export async function getHotelbedsBookingDetail(bookingReference: string): Promi
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/bookings/${encodeURIComponent(bookingReference)}`;
+    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/bookings/${encodeURIComponent(bookingReference)}`;
 
-    const res = await fetch(endpoint, {
+    const res = await fetchHotelbedsBooking(endpoint, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -954,11 +968,11 @@ export async function cancelHotelbedsBooking(
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${cfg.baseUrl}/hotel-api/1.0/bookings/${encodeURIComponent(
+    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/bookings/${encodeURIComponent(
       bookingReference
     )}?cancellationFlag=${flag}`;
 
-    const res = await fetch(endpoint, {
+    const res = await fetchHotelbedsBooking(endpoint, {
       method: "DELETE",
       headers: {
         Accept: "application/json",

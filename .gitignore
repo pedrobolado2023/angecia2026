@@ -25,7 +25,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .DS_Store
+# Hotelbeds mTLS
 *.pem
+*.key
+*.csr
+*.crt
+*.cer
+*.pfx
+*.p12
+csr.conf
 *.tsbuildinfo
 next-env.d.ts
 

@@ -9,3 +9,13 @@ venv/
 .env.local
 .git
 .gitignore
+
+# Hotelbeds mTLS
+**/*.pem
+**/*.key
+**/*.csr
+**/*.crt
+**/*.cer
+**/*.pfx
+**/*.p12
+**/csr.conf
