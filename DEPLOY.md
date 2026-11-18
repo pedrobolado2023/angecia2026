@@ -150,6 +150,20 @@ O Easypanel roda sobre Docker Swarm / Traefik. No seu projeto do Easypanel, voc�
 
 ## 🔒 Segurança Zero-Leak
 
+### Catálogo Hotelbeds no PostgreSQL
+
+O serviço web grava o conteúdo completo dos hotéis consultados no PostgreSQL, incluindo descrições, imagens, facilidades, categorias e quartos. Dados de teste e produção ficam separados. Hotéis ausentes ou com conteúdo vencido são consultados pela operação de detalhes da Content API. Se essa consulta falhar, o último conteúdo salvo continua disponível.
+
+Para ativar a carga inicial do catálogo brasileiro e sua atualização semanal no Easypanel, configure `HOTELBEDS_CATALOG_SYNC_ENABLED=true` no `frontagencia2026`, com `HOTELBEDS_ENVIRONMENT=production`, credenciais Hotelbeds de produção e `DATABASE_URL`. Faça o deploy da branch atual. As tabelas `hotelbeds_catalog` e `hotelbeds_catalog_sync` são criadas automaticamente. A rotina usa a Content API no host `HOTELBEDS_ENDPOINT_URL`, normalmente `https://api.hotelbeds.com` em produção.
+
+O servidor verifica o agendamento a cada minuto e processa até 500 hotéis por etapa. O progresso é salvo junto de cada página e é retomado após reinícios. Um bloqueio no PostgreSQL permite apenas uma etapa simultânea entre réplicas. A próxima carga completa é programada para sete dias após o início da anterior. Hotéis removidos pelo fornecedor são marcados como inativos apenas após a conclusão verificada da carga. A busca por nome passa a consultar o índice persistido quando a primeira carga termina.
+
+No ambiente Hotelbeds de teste, a varredura nacional automática fica desativada para preservar a cota. Os hotéis efetivamente consultados pelo site continuam sendo gravados e reutilizados entre deploys.
+
+No console do serviço web do Easypanel, consulte o progresso sem consumir chamadas da Hotelbeds com `node scripts/hotelbeds-catalog.mjs status`. Para executar uma etapa que já esteja agendada, use `node scripts/hotelbeds-catalog.mjs step`. Esses comandos usam a variável de sessão administrativa já configurada no serviço, `HOSPEDE_ADMIN_SESSION_SECRET`. O endpoint administrativo autenticado é `/api/admin/hotelbeds/catalog`, com GET para status e POST para uma etapa.
+
+Respostas 400, 401, 403 e 404 suspendem as novas tentativas por 24 horas. Outras falhas suspendem por pelo menos 15 minutos, respeitando um `Retry-After` maior de até 24 horas. Os logs mostram o estado e o progresso com o prefixo `[Hotelbeds Catálogo]`. Uma falha mantém os registros anteriores e o ponto de retomada.
+
 ### Checkout Mercado Pago e Hotelbeds
 
 - Para habilitar o mTLS de Booking no serviço web, configure `HOTELBEDS_MTLS_ENABLED=true`. O host mTLS é escolhido por `HOTELBEDS_ENVIRONMENT`. Mantenha `HOTELBEDS_ENDPOINT_URL` com o host configurado para a Content API.
