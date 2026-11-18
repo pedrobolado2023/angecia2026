@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticatedCustomer } from "@/lib/customerSession";
 import { checkoutDb } from "@/lib/checkout";
+import { translateHotelbedsRoomName } from "@/lib/hotelbedsRoomName";
 
 const headers = { "Cache-Control": "private, no-store" };
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
     const bookings = rows.slice(0, 10).map((row) => ({
       id: row.id, reference: row.reference, state: row.state,
       status: row.reservation_status === "CANCELLED" ? "cancelled" : row.state,
-      hotelName: row.hotel_name, roomName: row.room_name,
+      hotelName: row.hotel_name, roomName: translateHotelbedsRoomName(row.room_name),
       checkIn: row.check_in, checkOut: row.check_out, amount: row.amount_cents / 100,
       canDownload: row.can_download,
     }));

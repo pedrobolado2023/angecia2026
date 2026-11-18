@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import PDFDocument from "pdfkit";
 import type { CheckoutOrder } from "./checkout";
+import { translateHotelbedsRoomName } from "./hotelbedsRoomName";
 import { hotelCancellationPolicy } from "./cancellationPolicy";
 import { supplierVoucherNotice, voucherBoard, voucherCategory, voucherComments } from "./hotelbedsVoucherData";
 
@@ -53,7 +54,7 @@ export function renderBookingVoucher(order: CheckoutOrder, example = false): Pro
   line(booking.hotelName, true);
   line(details?.address || "Endereço não informado pelo fornecedor.");
   if (details?.destination || details?.category) line([details.destination, voucherCategory(details.category)].filter(Boolean).join(" | "));
-  line(`Quarto: ${booking.roomName}${details?.board ? `  |  Regime: ${voucherBoard(details.board)}` : ""}`);
+  line(`Quarto: ${translateHotelbedsRoomName(booking.roomName)}${details?.board ? `  |  Regime: ${voucherBoard(details.board)}` : ""}`);
   line(`Entrada: ${displayDate(booking.checkInDate)}  |  Saída: ${displayDate(checkOut)}  |  Diárias: ${booking.nightsCount}`);
 
   section("Hóspedes");

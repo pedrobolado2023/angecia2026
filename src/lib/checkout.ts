@@ -4,6 +4,7 @@ import { calculateVellutoPricing } from "./pricingEngine";
 import { checkHotelbedsRate, createHotelbedsBooking, getHotelbedsBookingDetail, searchHotelbedsAvailability, type HotelbedsPax } from "./hotelbeds";
 import { readVoucherSupplier, supplierVoucherNotice, type VoucherSupplier } from "./hotelbedsVoucherData";
 import { readHotelbedsOffer } from "./hotelbedsOffer";
+import { translateHotelbedsRoomName } from "./hotelbedsRoomName";
 import { ensurePostgresTables, getPostgresPool, saveBookingToPostgres, saveHotelbedsReservationStatus, type SaveBookingRecordInput } from "./postgres";
 import { type CustomerCRMRecord } from "./customerStore";
 import { type CheckoutMode, type MercadoPagoPayment } from "./mercadopago";
@@ -268,7 +269,7 @@ export function checkoutResponse(order: CheckoutOrder) {
     } : undefined,
     supplierRemarks: order.state === "confirmed" ? order.supplier_remarks : undefined,
     stay: {
-      hotelName: order.payload.booking.hotelName, roomName: order.payload.booking.roomName,
+      hotelName: order.payload.booking.hotelName, roomName: translateHotelbedsRoomName(order.payload.booking.roomName),
       checkIn: order.payload.booking.checkInDate, checkOut: order.payload.checkOut,
       holder: `${order.payload.booking.primaryFirstName} ${order.payload.booking.primaryLastName}`,
     },
