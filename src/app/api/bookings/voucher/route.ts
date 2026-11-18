@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { renderBookingVoucher } from "@/lib/bookingVoucher";
 import { authenticatedCustomer } from "@/lib/customerSession";
-import { getCheckoutOrder, isOrderId } from "@/lib/checkout";
+import { checkoutDb, getCheckoutOrder, isOrderId, refreshVoucherDetails } from "@/lib/checkout";
 
 const headers = { "Cache-Control": "private, no-store" };
 
@@ -16,7 +16,13 @@ export async function GET(request: NextRequest) {
     if (!order?.voucher || order.state !== "confirmed" || order.payment?.status !== "approved") {
       return NextResponse.json({ error: "Voucher indisponível." }, { status: 404, headers });
     }
-    const pdf = await renderBookingVoucher(order);
+    const updated = await refreshVoucherDetails(order).catch(() => order);
+    const db = await checkoutDb();
+    const cancelled = await db.query(
+      "SELECT 1 FROM bookings WHERE booking_code = $1 AND owner_member_code = $2 AND reservation_status = 'CANCELLED'",
+      [order.id, customer.id]);
+    if (cancelled.rowCount) return NextResponse.json({ error: "A reserva está cancelada." }, { status: 409, headers });
+    const pdf = await renderBookingVoucher(updated);
     return new NextResponse(new Uint8Array(pdf), { headers: {
       ...headers, "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="voucher-${orderId}.pdf"`,

@@ -24,6 +24,7 @@ import { HotelSearchFilters, type SearchCriteria } from "@/components/HotelSearc
 import { LuxuryImage } from "@/components/LuxuryImage";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
+import { CustomerBookings } from "@/components/CustomerBookings";
 import { MembershipRenewalModal } from "@/components/MembershipRenewalModal";
 import { LegalTermsModal, LegalModalTab } from "@/components/LegalTermsModal";
 import { BlackFridayModal } from "@/components/BlackFridayModal";
@@ -3664,14 +3665,14 @@ export default function HospedeClubApp() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182026]/45 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="max-w-lg w-full bg-white text-[#182026] border border-[#DFD5C5] rounded-2xl p-6 sm:p-8 shadow-2xl my-auto">
             <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-1">
-              Cadastro Oficial de Membro • Salvo no Servidor
+              {loggedCustomer ? "Minha conta" : "Cadastro Oficial de Membro"}
             </span>
             <h3 className="font-editorial text-3xl font-normal text-[#182026]">
               Hóspede Club
             </h3>
-            <p className="text-xs text-[#5C646B] mt-1.5 leading-relaxed">
-              Cadastre seus dados e preferências de viagem para desbloquear tarifas secretas (até 28% OFF) e receber campanhas exclusivas de membro.
-            </p>
+            {loggedCustomer ? <CustomerBookings key={loggedCustomer.id} /> : <p className="text-xs text-[#5C646B] mt-1.5 leading-relaxed">
+              Cadastre seus dados e preferências de viagem para receber tarifas e campanhas de membro.
+            </p>}
 
             {/* Formulário de Cadastro do Cliente (Salvo no Backend /api/customers) */}
             <form

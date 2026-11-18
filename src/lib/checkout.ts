@@ -1,9 +1,10 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { calculateVellutoPricing } from "./pricingEngine";
-import { checkHotelbedsRate, createHotelbedsBooking, searchHotelbedsAvailability, type HotelbedsPax } from "./hotelbeds";
+import { checkHotelbedsRate, createHotelbedsBooking, getHotelbedsBookingDetail, searchHotelbedsAvailability, type HotelbedsPax } from "./hotelbeds";
+import { readVoucherSupplier, supplierVoucherNotice, type VoucherSupplier } from "./hotelbedsVoucherData";
 import { readHotelbedsOffer } from "./hotelbedsOffer";
-import { ensurePostgresTables, getPostgresPool, saveBookingToPostgres, type SaveBookingRecordInput } from "./postgres";
+import { ensurePostgresTables, getPostgresPool, saveBookingToPostgres, saveHotelbedsReservationStatus, type SaveBookingRecordInput } from "./postgres";
 import { type CustomerCRMRecord } from "./customerStore";
 import { type CheckoutMode, type MercadoPagoPayment } from "./mercadopago";
 import { isValidCPF } from "./cpfValidator";
@@ -30,6 +31,7 @@ type VoucherDetails = {
   currency?: string;
   cancellationPolicies?: { amount: string; from: string }[];
   cancellationPolicy?: BookingCancellationPolicy;
+  supplier?: VoucherSupplier;
 };
 
 export type CheckoutOrder = {
@@ -317,6 +319,7 @@ export async function reconcileCheckoutPayment(payment: MercadoPagoPayment) {
     cancellationPolicy: hotelCancellationPolicy(confirmedPolicies, confirmedCurrency) ??
       hotelCancellationPolicy(details?.cancellationPolicies, details?.currency, confirmedRate?.rateClass) ??
       details?.cancellationPolicy,
+    supplier: readVoucherSupplier(supplier.rawBooking),
   };
   const saved = voucher ? await saveBookingToPostgres({
     ...booking, bookingCode: claimed.id, voucherCode: voucher, hotelbedsReference: voucher,
@@ -329,4 +332,31 @@ export async function reconcileCheckoutPayment(payment: MercadoPagoPayment) {
     [claimed.id, saved?.success ? "confirmed" : "review", voucher || null, supplier.supplierRemarks || null, voucherDetails]
   );
   return complete;
+}
+
+export async function refreshVoucherDetails(order: CheckoutOrder): Promise<CheckoutOrder> {
+  if (order.state !== "confirmed" || !order.voucher || order.payload.mode !== process.env.CHECKOUT_MODE ||
+      order.payload.voucherDetails?.supplier) return order;
+  const db = await checkoutDb();
+  const claim = await db.query(
+    `UPDATE checkout_orders SET payload = payload || jsonb_build_object('voucherRefreshedAt', NOW())
+      WHERE id = $1 AND state = 'confirmed'
+      AND (payload->>'voucherRefreshedAt' IS NULL OR (payload->>'voucherRefreshedAt')::timestamptz < NOW() - INTERVAL '15 minutes')
+      RETURNING id`, [order.id]);
+  if (!claim.rowCount) return (await getCheckoutOrder(order.id)) || order;
+  const result = await getHotelbedsBookingDetail(order.voucher);
+  if (!result.ok || result.isSimulation || result.booking?.reference !== order.voucher) return order;
+  await saveHotelbedsReservationStatus(order.voucher, result.booking.status);
+  const supplier = readVoucherSupplier(result.booking);
+  if (!supplier) return order;
+  const rate = result.booking.hotel?.rooms?.[0]?.rates?.[0];
+  const details = { supplier,
+    ...(typeof rate?.rateComments === "string" ? { rateComments: rate.rateComments.slice(0, 12000) } : {}),
+  };
+  const { rows: [updated] } = await db.query<CheckoutOrder>(
+    `UPDATE checkout_orders SET supplier_remarks = $2,
+      payload = jsonb_set(payload, '{voucherDetails}', COALESCE(payload->'voucherDetails', '{}'::jsonb) || $3::jsonb)
+      WHERE id = $1 AND state = 'confirmed' RETURNING *`,
+    [order.id, supplierVoucherNotice(supplier, order.voucher), details]);
+  return updated || order;
 }

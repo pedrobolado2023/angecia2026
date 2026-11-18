@@ -184,6 +184,7 @@ export async function ensurePostgresTables(): Promise<boolean> {
     CREATE INDEX IF NOT EXISTS idx_customers_cpf ON customers(cpf);
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS owner_member_code VARCHAR(120);
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS hotelbeds_reference VARCHAR(120);
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reservation_status VARCHAR(30) NOT NULL DEFAULT 'CONFIRMED';
     CREATE TABLE IF NOT EXISTS checkout_orders (
       id UUID PRIMARY KEY,
       customer_id VARCHAR(120) NOT NULL,
@@ -577,6 +578,13 @@ export async function ownsHotelbedsBooking(reference: string, customerId: string
     [reference, customerId, email.toLowerCase()]
   );
   return Boolean(result.rowCount);
+}
+
+export async function saveHotelbedsReservationStatus(reference: string, status: string) {
+  if (!["CONFIRMED", "CANCELLED"].includes(status)) return;
+  const db = getPostgresPool();
+  if (!db || !(await ensurePostgresTables())) throw new Error("Banco indisponível.");
+  await db.query("UPDATE bookings SET reservation_status = $2 WHERE hotelbeds_reference = $1", [reference, status]);
 }
 
 export interface SaveBookingRecordInput {

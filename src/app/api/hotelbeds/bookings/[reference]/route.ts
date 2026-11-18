@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getHotelbedsBookingDetail, cancelHotelbedsBooking } from "@/lib/hotelbeds";
 
 import { authenticatedCustomer } from "@/lib/customerSession";
-import { ownsHotelbedsBooking } from "@/lib/postgres";
+import { ownsHotelbedsBooking, saveHotelbedsReservationStatus } from "@/lib/postgres";
 import { getServerOmnibeesConfig } from "@/lib/serverEnv";
 import { timingSafeEqual } from "node:crypto";
 
@@ -38,6 +38,9 @@ export async function GET(
   if (denied) return denied;
 
   const result = await getHotelbedsBookingDetail(reference);
+  if (result.ok && !result.isSimulation && result.booking?.reference === reference && result.booking?.status) {
+    await saveHotelbedsReservationStatus(reference, result.booking.status);
+  }
   return NextResponse.json(result, { status: result.ok ? 200 : 400, headers: { "Cache-Control": "private, no-store" } });
 }
 
@@ -57,6 +60,9 @@ export async function DELETE(
   if (denied) return denied;
 
   const result = await cancelHotelbedsBooking(reference, flag);
+  if (flag === "CANCELLATION" && result.ok && !result.isSimulation && result.status === "CANCELLED") {
+    await saveHotelbedsReservationStatus(reference, "CANCELLED");
+  }
   return NextResponse.json(result, { status: result.ok ? 200 : 400, headers: { "Cache-Control": "private, no-store" } });
 }
 

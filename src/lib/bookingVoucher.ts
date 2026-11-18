@@ -2,6 +2,7 @@ import { join } from "node:path";
 import PDFDocument from "pdfkit";
 import type { CheckoutOrder } from "./checkout";
 import { hotelCancellationPolicy } from "./cancellationPolicy";
+import { supplierVoucherNotice, voucherBoard, voucherCategory, voucherComments } from "./hotelbedsVoucherData";
 
 const CONTACT = "contato@hospedeclub.com.br";
 const INK = "#182026";
@@ -51,8 +52,8 @@ export function renderBookingVoucher(order: CheckoutOrder, example = false): Pro
   section("Hospedagem");
   line(booking.hotelName, true);
   line(details?.address || "Endereço não informado pelo fornecedor.");
-  if (details?.destination || details?.category) line([details.destination, details.category].filter(Boolean).join(" | "));
-  line(`Quarto: ${booking.roomName}${details?.board ? `  |  Regime: ${details.board}` : ""}`);
+  if (details?.destination || details?.category) line([details.destination, voucherCategory(details.category)].filter(Boolean).join(" | "));
+  line(`Quarto: ${booking.roomName}${details?.board ? `  |  Regime: ${voucherBoard(details.board)}` : ""}`);
   line(`Entrada: ${displayDate(booking.checkInDate)}  |  Saída: ${displayDate(checkOut)}  |  Diárias: ${booking.nightsCount}`);
 
   section("Hóspedes");
@@ -78,13 +79,26 @@ export function renderBookingVoucher(order: CheckoutOrder, example = false): Pro
     line("A política aplicável não consta no registro desta reserva. Consulte o atendimento antes de solicitar o cancelamento.");
   }
 
-  section("Termos e atendimento");
-  if (details?.rateComments) line(details.rateComments);
-  if (order.supplier_remarks) line(order.supplier_remarks);
+  section("Condições da hospedagem");
+  if (details?.rateComments) line(voucherComments(details.rateComments));
+  const supplierNotice = details?.supplier && order.voucher
+    ? supplierVoucherNotice(details.supplier, order.voucher) : order.supplier_remarks;
+  if (supplierNotice) {
+    section("Informação legal do fornecedor");
+    line(supplierNotice);
+  } else {
+    section("Informação do fornecedor pendente");
+    line("A identificação fiscal do fornecedor ainda não está disponível neste registro. Solicite ao atendimento a versão atualizada do voucher.");
+  }
+  section("Atendimento");
   line("Apresente o voucher e um documento de identificação no check-in.");
   pdf.font("Helvetica").fontSize(10).fillColor(GOLD).text("Termos de uso do Hóspede Club", left, pdf.y,
     { width, link: "https://hospedeclub.com.br/termos", underline: true });
   pdf.text(CONTACT, left, pdf.y, { width, link: `mailto:${CONTACT}`, underline: true });
+  if (details?.rateComments && voucherComments(details.rateComments) !== details.rateComments) {
+    section("Observações originais do fornecedor");
+    line(details.rateComments);
+  }
 
   const pages = pdf.bufferedPageRange();
   for (let index = pages.start; index < pages.start + pages.count; index++) {

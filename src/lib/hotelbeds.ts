@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { fetchLiveExchangeRates } from "./currency";
 import { signHotelbedsOffer } from "./hotelbedsOffer";
+import { readVoucherSupplier, supplierVoucherNotice } from "./hotelbedsVoucherData";
 import { fetchHotelbedsBooking, hotelbedsBookingBaseUrl } from "./hotelbedsBookingTransport";
 
 export interface HotelbedsConfig {
@@ -557,6 +558,7 @@ export async function searchHotelbedsAvailability(params: {
     const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/hotels`;
 
     const requestPayload: Record<string, unknown> = {
+      language: "POR",
       stay: {
         checkIn: params.checkIn,
         checkOut: params.checkOut,
@@ -762,6 +764,7 @@ export async function checkHotelbedsRate(rateKey: string): Promise<{
         "X-Signature": signature,
       },
       body: JSON.stringify({
+        language: "POR",
         rooms: [{ rateKey }],
       }),
       signal: AbortSignal.timeout(30000),
@@ -816,6 +819,7 @@ export async function createHotelbedsBooking(booking: {
     const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/bookings`;
 
     const body = {
+      language: "POR",
       holder: booking.holder,
       rooms: [
         {
@@ -867,10 +871,8 @@ export async function createHotelbedsBooking(booking: {
     if (!hbRef || data.booking?.status !== "CONFIRMED") {
       return { ok: false, isSimulation: false, error: "A Hotelbeds não confirmou a reserva." };
     }
-    const supplier = data.booking?.supplier;
-    const supplierRemarks = typeof supplier?.name === "string" && typeof supplier?.vatNumber === "string"
-      ? `Payable through ${supplier.name}, acting as agent for the service operating company, details of which can be provided upon request. VAT: ${supplier.vatNumber} Reference: ${hbRef}`
-      : typeof supplier?.remarks === "string" ? supplier.remarks : undefined;
+    const supplier = readVoucherSupplier(data.booking);
+    const supplierRemarks = supplier ? supplierVoucherNotice(supplier, hbRef) : undefined;
 
     return {
       ok: true,
@@ -914,7 +916,7 @@ export async function getHotelbedsBookingDetail(bookingReference: string): Promi
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
-    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/bookings/${encodeURIComponent(bookingReference)}`;
+    const endpoint = `${hotelbedsBookingBaseUrl(cfg.environment, cfg.baseUrl)}/hotel-api/1.0/bookings/${encodeURIComponent(bookingReference)}?language=POR`;
 
     const res = await fetchHotelbedsBooking(endpoint, {
       method: "GET",
