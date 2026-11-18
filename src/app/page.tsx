@@ -1209,10 +1209,11 @@ export default function HospedeClubApp() {
     ...Array.from({ length: childrenCount }, (_, i) => ({ key: `child-${i}`, label: `Criança ${i + 1}`, minAge: 6, maxAge: 17 })),
     ...Array.from({ length: infantsCount }, (_, i) => ({ key: `infant-${i}`, label: `Infantil ${i + 1}`, minAge: 0, maxAge: 5 })),
   ];
-  const selectedRate = (selectedRoom as RoomCategory & { rates?: { rateKey: string; boardCode: string; rateClass: string }[] }).rates?.[0];
+  const selectedRate = (selectedRoom as RoomCategory & { rates?: { rateKey: string; boardCode: string; rateClass: string; offerToken?: string }[] }).rates?.[0];
   const quoteRequest = {
     action: "quote", hotelbedsCode: selectedHotel.hotelbedsCode, roomCode: selectedRoom.hotelbedsRoomCode,
     rateKey: selectedRate?.rateKey, boardCode: selectedRate?.boardCode, rateClass: selectedRate?.rateClass,
+    offerToken: selectedRate?.offerToken,
     adults: adultsCount, children: childrenCount, infants: infantsCount, checkInDate, checkOutDate,
     paymentModality: paymentMethod === "pix" ? "PIX" : "CARD", installments: selectedInstallments, acceptedTerms,
     primaryFirstName, primaryLastName, primaryEmail, primaryEmailConfirm, primaryCountry, primaryCpf,

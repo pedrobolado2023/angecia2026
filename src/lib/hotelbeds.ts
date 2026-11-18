@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { fetchLiveExchangeRates } from "./currency";
+import { signHotelbedsOffer } from "./hotelbedsOffer";
 import { fetchHotelbedsBooking, hotelbedsBookingBaseUrl } from "./hotelbedsBookingTransport";
 
 export interface HotelbedsConfig {
@@ -22,6 +23,7 @@ export interface HotelbedsStay {
 }
 
 export interface HotelbedsRate {
+  offerToken?: string;
   rateKey: string;
   rateClass: string;
   rateType: string;
@@ -687,6 +689,18 @@ export async function searchHotelbedsAvailability(params: {
         }),
       };
     });
+
+    for (const hotel of mappedHotels) {
+      for (const room of hotel.rooms) {
+        for (const rate of room.rates) {
+          const { offerToken: _token, ...quotedRate } = rate;
+          rate.offerToken = signHotelbedsOffer({ checkIn: params.checkIn, checkOut: params.checkOut, occupancies,
+            hotel: { code: hotel.code, name: hotel.name, address: hotel.address, categoryName: hotel.categoryName,
+              destinationName: hotel.destinationName, originalCurrency: hotel.originalCurrency },
+            room: { code: room.code, name: room.name }, rate: quotedRate });
+        }
+      }
+    }
 
     return {
       ok: true,

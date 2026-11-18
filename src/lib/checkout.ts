@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { calculateVellutoPricing } from "./pricingEngine";
 import { checkHotelbedsRate, createHotelbedsBooking, searchHotelbedsAvailability, type HotelbedsPax } from "./hotelbeds";
+import { readHotelbedsOffer } from "./hotelbedsOffer";
 import { ensurePostgresTables, getPostgresPool, saveBookingToPostgres, type SaveBookingRecordInput } from "./postgres";
 import { type CustomerCRMRecord } from "./customerStore";
 import { type CheckoutMode, type MercadoPagoPayment } from "./mercadopago";
@@ -140,15 +141,30 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
   if (!Number.isSafeInteger(hotelCode) || hotelCode < 1 || !roomCode || !requestedRateKey) {
     throw new CheckoutError("Escolha uma tarifa disponível em uma nova busca.", 409);
   }
-  const result = await searchHotelbedsAvailability({
-    checkIn, checkOut, hotelCodes: [hotelCode], includeContent: false,
-    occupancies: [{ rooms: 1, adults: Number(adults), children: childPaxes.length,
-      ...(childPaxes.length ? { paxes: childPaxes } : {}) }],
-  });
-  const hotel = result.ok && !result.isSimulation && result.hotels.find((item) => Number(item.code) === hotelCode);
-  const room = hotel && hotel.rooms.find((item) => item.code === roomCode);
-  const rate = room && room.rates.find((item) => item.rateKey === requestedRateKey && !item.packaging &&
-    item.boardCode === body.boardCode && item.rateClass === body.rateClass && item.paymentType === "AT_WEB");
+  const offer = readHotelbedsOffer(body.offerToken);
+  const occupancy = offer?.occupancies.length === 1 ? offer.occupancies[0] : undefined;
+  if (!offer || offer.checkIn !== checkIn || offer.checkOut !== checkOut || occupancy?.rooms !== 1 ||
+      occupancy.adults !== Number(adults) || (occupancy.children || 0) !== childPaxes.length) {
+    throw new CheckoutError("A busca expirou ou os hóspedes e datas foram alterados. Faça uma nova busca.", 409);
+  }
+  let hotel = Number(offer.hotel.code) === hotelCode ? offer.hotel : undefined;
+  let room = offer.room.code === roomCode ? offer.room : undefined;
+  let rate = offer.rate.rateKey === requestedRateKey && !offer.rate.packaging &&
+    offer.rate.boardCode === body.boardCode && offer.rate.rateClass === body.rateClass && offer.rate.paymentType === "AT_WEB" ? offer.rate : undefined;
+  const ages = (occupancy.paxes || []).map((pax) => pax.age).sort((a, b) => a - b);
+  const actualAges = childPaxes.map((pax) => pax.age).sort((a, b) => a - b);
+  if (hotel && room && rate && JSON.stringify(ages) !== JSON.stringify(actualAges)) {
+    // A composição foi corrigida no formulário. Cotar com as idades reais antes de CheckRate e pagamento.
+    const updated = await searchHotelbedsAvailability({ checkIn, checkOut, hotelCodes: [hotelCode], includeContent: false,
+      occupancies: [{ rooms: 1, adults: Number(adults), children: childPaxes.length, paxes: childPaxes }] });
+    const updatedHotel = updated.ok ? updated.hotels.find((item) => Number(item.code) === hotelCode) : undefined;
+    const updatedRoom = updatedHotel?.rooms.find((item) => item.code === roomCode);
+    const rates = updatedRoom?.rates.filter((item) => !item.packaging && item.paymentType === "AT_WEB" &&
+      item.boardCode === body.boardCode && item.rateClass === body.rateClass);
+    hotel = updatedHotel;
+    room = updatedRoom;
+    rate = rates?.length === 1 ? rates[0] : undefined;
+  }
   if (!hotel || !room || !rate || !["BRL", "EUR", "USD", "GBP"].includes(hotel.originalCurrency || "")) {
     throw new CheckoutError("A tarifa selecionada não está mais disponível. Faça uma nova busca.", 409);
   }
