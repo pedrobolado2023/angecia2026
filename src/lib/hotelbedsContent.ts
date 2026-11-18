@@ -48,10 +48,20 @@ export function normalizeHotelbedsContent(h: any): HotelbedsContentData {
   // Galeria prioritária: Fachada -> Piscina -> Acomodações reais -> Demais fotos da propriedade
   const sortedGallery = Array.from(new Set([...genImages, ...poolImages, ...habImages, ...allImages])).slice(0, 12);
 
-  const facilities = (h.facilities || [])
-    .map((f: any) => f.description?.content)
-    .filter(Boolean)
-    .slice(0, 10);
+  const facilityText = (f: any) => {
+    const description = f.description?.content;
+    if (!description) return "";
+    const value = [f.number, f.timeFrom && `a partir de ${f.timeFrom}`, f.timeTo && `até ${f.timeTo}`]
+      .filter((value) => value !== undefined && value !== null && value !== "").join(" · ");
+    return `${description}${value ? `: ${value}` : ""}${f.indFee === true ? " (cobrado à parte)" : ""}`;
+  };
+  const facilities = (h.facilities || []).filter((f: any) => f.indYesOrNo !== false).map(facilityText).filter(Boolean);
+  const remarks = [
+    ...(h.facilities || []).filter((f: any) => f.voucher === true && f.indYesOrNo !== false)
+      .map((f: any) => ({ text: facilityText(f) })),
+    ...(h.issues || []).map((issue: any) => ({ text: issue.description?.content || issue.name?.content || "",
+      from: issue.dateFrom, to: issue.dateTo })),
+  ].filter((item) => item.text);
 
   return {
     code: h.code,
@@ -64,6 +74,7 @@ export function normalizeHotelbedsContent(h: any): HotelbedsContentData {
     heroImage,
     gallery: sortedGallery,
     facilities,
+    remarks,
     roomImages,
     roomTypeImages,
     habImages,

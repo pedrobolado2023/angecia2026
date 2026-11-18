@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveHotelbedsRateComments } from "./hotelbedsRateComments";
 import { randomUUID } from "node:crypto";
 import { calculateVellutoPricing } from "./pricingEngine";
 import { checkHotelbedsRate, createHotelbedsBooking, getHotelbedsBookingDetail, searchHotelbedsAvailability, type HotelbedsPax } from "./hotelbeds";
@@ -202,6 +203,15 @@ export async function createCheckoutQuote(customer: CustomerCRMRecord, body: Rec
   } else if (rate.rateType !== "BOOKABLE") {
     throw new CheckoutError("A tarifa não está disponível para reserva.", 409);
   }
+  if (rate.rateType === "BOOKABLE" && rate.rateCommentsId && !voucherDetails.rateComments) {
+    try {
+      voucherDetails.rateComments = await resolveHotelbedsRateComments(rate.rateCommentsId, checkIn);
+    } catch {
+      throw new CheckoutError("Não foi possível carregar as condições desta tarifa. Tente novamente antes de pagar.", 502);
+    }
+  }
+  voucherDetails.rateComments = [...new Set([voucherDetails.rateComments, ...(rate.additionalRemarks || [])]
+    .filter((value): value is string => Boolean(value)))].join("\n") || undefined;
   voucherDetails.cancellationPolicy = hotelCancellationPolicy(voucherDetails.cancellationPolicies, voucherDetails.currency, rateClass) ?? {
     source: "hospede-club", lines: [resolveRoomCancellationPolicy(undefined, checkIn).details],
   };

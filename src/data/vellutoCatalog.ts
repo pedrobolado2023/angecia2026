@@ -24,6 +24,7 @@ export interface DestinationCity {
 }
 
 export interface RoomCategory {
+  mandatorySellingRate?: number;
   id: string;
   hotelbedsRoomCode?: string;
   name: string;
@@ -41,6 +42,7 @@ export interface RoomCategory {
 }
 
 export interface CuratedHotel {
+  mandatorySellingRate?: number;
   id: string;
   name: string;
   subtitle: string;

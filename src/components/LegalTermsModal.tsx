@@ -102,7 +102,7 @@ export function LegalTermsModal({
                   ✓ Transparência de Preço Final:
                 </strong>
                 <p className="text-[11px] text-[#5C646B]">
-                  Todas as taxas governamentais, impostos (ISS), taxas de serviço do hotel e regime de alimentação já estão inclusos no valor apresentado. Não há cobranças de taxas surpresa no check-out.
+                  O total confirmado e as condições da tarifa informam os valores incluídos. Taxas locais, depósitos e serviços cobrados à parte pelo hotel são apresentados nas observações da reserva.
                 </p>
               </div>
 
@@ -130,10 +130,11 @@ export function LegalTermsModal({
                   <strong className="block text-xs uppercase tracking-wider mb-1">
                     Condição Específica desta Acomodação {hotelName ? `(${hotelName})` : ""}:
                   </strong>
-                  <p className="text-xs font-medium leading-relaxed">{cancellationText}</p>
+                  <p className="whitespace-pre-wrap text-xs font-medium leading-relaxed">{cancellationText}</p>
                 </div>
               ) : null}
 
+              {!cancellationText && <>
               {/* Regra de Check-in no Mesmo Dia ou Dia Seguinte */}
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
                 <strong className="block text-[11px] uppercase tracking-wider mb-0.5 font-bold">
@@ -190,6 +191,7 @@ export function LegalTermsModal({
                 </div>
               </div>
 
+              </>}
               <div className="pt-2 text-[11px] text-[#5C646B] border-t border-[#F0EAE0]">
                 <p>
                   * <strong>Prevalência da Operadora Hoteleira:</strong> Caso a Hotelbeds disponibilize a política de cancelamento específica do hotel parceiro, as condições informadas pela Hotelbeds prevalecem. Quando o hotel não disponibilizar política própria, aplica-se integralmente a Política Oficial Padrão do Hóspede Club detalhada acima.

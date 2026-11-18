@@ -35,6 +35,9 @@ export interface HotelbedsRate {
   fxRate?: number;
   packaging?: boolean;
   rateComments?: string;
+  rateCommentsId?: string;
+  additionalRemarks?: string[];
+  promotions?: string[];
   supplierCancellationPolicies?: { amount: string; from: string }[];
   cancellationPolicies?: Array<{
     amount: number;
@@ -64,6 +67,7 @@ export interface HotelbedsContentData {
   heroImage?: string;
   gallery: string[];
   facilities?: string[];
+  remarks?: { text: string; from?: string; to?: string }[];
   roomImages?: Record<string, string[]>;
   roomTypeImages?: Record<string, string[]>;
   habImages?: string[];
@@ -244,6 +248,15 @@ export async function searchHotelbedsAvailability(params: {
   });
 
   if (!cfg.apiKey || !cfg.secret) return failure("Credenciais Hotelbeds não configuradas");
+  if (!Array.isArray(occupancies) || !occupancies.length || occupancies.length > 10 || occupancies.some((occupancy) =>
+    !occupancy || !Array.isArray(occupancy.paxes ?? []) ||
+    !Number.isSafeInteger(occupancy.rooms) || occupancy.rooms < 1 || occupancy.rooms > 10 ||
+    !Number.isSafeInteger(occupancy.adults) || occupancy.adults < 1 || occupancy.adults > 20 ||
+    !Number.isSafeInteger(occupancy.children ?? 0) || (occupancy.children ?? 0) < 0 || (occupancy.children ?? 0) > 20 ||
+    (occupancy.children ?? 0) !== (occupancy.paxes?.length ?? 0) ||
+    occupancy.paxes?.some((pax) => pax.type !== "CH" || !Number.isInteger(pax.age) || pax.age < 0 || pax.age > 17))) {
+    return failure("Informe a ocupação e as idades reais de todas as crianças.");
+  }
 
   try {
     const { signature } = generateHotelbedsSignature(cfg.apiKey, cfg.secret);
@@ -344,7 +357,9 @@ export async function searchHotelbedsAvailability(params: {
             name: translateHotelbedsRoomName(r.name),
             heroImage: roomHeroImage,
             gallery: resolvedRoomImages.length > 0 ? resolvedRoomImages : (roomHeroImage ? [roomHeroImage] : []),
-            rates: (r.rates || []).map((rate: any) => {
+            rates: (r.rates || []).filter((rate: any) => rate.packaging !== true && rate.paymentType === "AT_WEB" &&
+              ["BOOKABLE", "RECHECK"].includes(rate.rateType) && Number(rate.net) > 0 &&
+              (rate.hotelMandatory !== true || Number(rate.sellingRate) >= Number(rate.net))).map((rate: any) => {
               const rawNet = Number(rate.net || 0);
               const netBRL = Math.round(rawNet * fxRate * 100) / 100;
               const sellingRateBRL = rate.sellingRate
@@ -367,6 +382,14 @@ export async function searchHotelbedsAvailability(params: {
                 boardName: rate.boardName,
                 packaging: rate.packaging === true,
                 rateComments: rate.rateComments,
+                rateCommentsId: rate.rateCommentsId,
+                additionalRemarks: [
+                  ...(content?.remarks || []).filter((item) => (!item.from || item.from <= params.checkOut) &&
+                    (!item.to || item.to >= params.checkIn)).map((item) => item.text),
+                  ...(rate.taxes?.taxes || []).filter((tax: any) => tax.included === false).map((tax: any) =>
+                    `${tax.type || "Taxa local"}: ${tax.amount ?? "valor a confirmar"} ${tax.currency || rawCurrency}, cobrada à parte no destino.`),
+                ],
+                promotions: (rate.promotions || []).map((promotion: any) => promotion.name || promotion.remark).filter(Boolean),
                 supplierCancellationPolicies: (rate.cancellationPolicies || []).map((cp: any) => ({
                   amount: String(cp.amount ?? ""), from: cp.from,
                 })),
@@ -381,6 +404,15 @@ export async function searchHotelbedsAvailability(params: {
       };
     });
 
+    // A lista e os preços mínimos refletem somente ofertas que podem ser compradas neste canal.
+    for (let index = mappedHotels.length - 1; index >= 0; index--) {
+      const hotel = mappedHotels[index];
+      hotel.rooms = hotel.rooms.filter((room) => room.rates.length > 0);
+      const rates = hotel.rooms.flatMap((room) => room.rates);
+      if (!rates.length) { mappedHotels.splice(index, 1); continue; }
+      hotel.minRate = Math.min(...rates.map((rate) => rate.net));
+      hotel.maxRate = Math.max(...rates.map((rate) => rate.sellingRate || rate.net));
+    }
     for (const hotel of mappedHotels) {
       for (const room of hotel.rooms) {
         for (const rate of room.rates) {
@@ -400,7 +432,7 @@ export async function searchHotelbedsAvailability(params: {
       checkOut: data.hotels?.checkOut || params.checkOut,
       total: mappedHotels.length,
       contentIncomplete: (params.includeContent !== false && codes.some((code) => !contentMap[code])) ||
-        Number(data.hotels?.total || 0) > mappedHotels.length,
+        Number(data.hotels?.total || 0) > hotelsList.length,
       hotels: mappedHotels,
     };
   } catch (err: unknown) {

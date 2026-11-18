@@ -1,3 +1,4 @@
+import { validGuestAges } from "@/lib/guestAges";
 import { NextRequest, NextResponse } from "next/server";
 import { findBrazilHotelbedsCodes, searchHotelbedsAvailability } from "@/lib/hotelbeds";
 import { calculateVellutoPricing } from "@/lib/pricingEngine";
@@ -82,12 +83,21 @@ export async function GET(request: NextRequest) {
         checkIn < dateInBrazil() || checkOut <= checkIn) {
       return NextResponse.json({ ok: false, message: "Confira as datas e o número de hóspedes." }, { status: 400 });
     }
+    const readAges = (key: string) => {
+      const value = searchParams.get(key);
+      return value ? value.split(",").map((age) => age.trim() === "" ? NaN : Number(age)) : [];
+    };
+    const childAges = readAges("childAges");
+    const infantAges = readAges("infantAges");
+    if (!validGuestAges(children, infants, childAges, infantAges)) {
+      return NextResponse.json({ ok: false, message: "Informe a idade de cada criança na data de entrada." }, { status: 400 });
+    }
     const hotelCodesParam = searchParams.get("hotelCodes");
     const hotelCodes = hotelCodesParam ? hotelCodesParam.split(",") : undefined;
     const property = (searchParams.get("property") || "").trim().slice(0, 120);
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    const cacheKey = JSON.stringify([destinationCode.toUpperCase(), checkIn, checkOut, adults, children, infants, hotelCodes, property]);
+    const cacheKey = JSON.stringify([destinationCode.toUpperCase(), checkIn, checkOut, adults, children, infants, childAges, infantAges, hotelCodes, property]);
     const cached = availabilityMemoryCache.get(cacheKey);
     const now = Date.now();
 
@@ -105,8 +115,8 @@ export async function GET(request: NextRequest) {
         rooms: 1, adults, children: children + infants,
         ...(children + infants > 0 ? {
           paxes: [
-            ...Array.from({ length: children }, () => ({ type: "CH" as const, age: 8 })),
-            ...Array.from({ length: infants }, () => ({ type: "CH" as const, age: 1 })),
+            ...childAges.map((age) => ({ type: "CH" as const, age })),
+            ...infantAges.map((age) => ({ type: "CH" as const, age })),
           ],
         } : {}),
       }],

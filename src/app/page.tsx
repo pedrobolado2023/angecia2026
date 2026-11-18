@@ -20,6 +20,8 @@ import { PricingSimulatorDrawer } from "@/components/PricingSimulatorDrawer";
 import { CouncilGovernanceModal } from "@/components/CouncilGovernanceModal";
 import { ExtranetModal } from "@/components/ExtranetModal";
 import { HotelResultFilters, emptyHotelFilters, mealPlans, type HotelFilters } from "@/components/HotelResultFilters";
+import { GuestAgeFields } from "@/components/GuestAgeFields";
+import { resizeGuestAges, validGuestAges } from "@/lib/guestAges";
 import { HotelSearchFilters, type SearchCriteria } from "@/components/HotelSearchFilters";
 import { LuxuryImage } from "@/components/LuxuryImage";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
@@ -136,6 +138,8 @@ function resultsUrl(criteria: SearchCriteria) {
     criancas: String(criteria.children),
     bebes: String(criteria.infants),
   });
+  if (criteria.childAges?.length) params.set("idadesCriancas", criteria.childAges.join(","));
+  if (criteria.infantAges?.length) params.set("idadesInfantis", criteria.infantAges.join(","));
   if (criteria.collectionId) params.set("colecao", criteria.collectionId);
   return `/resultados?${params}`;
 }
@@ -271,6 +275,8 @@ export default function HospedeClubApp() {
   const [adultsCount, setAdultsCount] = useState<number>(2);
   const [childrenCount, setChildrenCount] = useState<number>(0);
   const [infantsCount, setInfantsCount] = useState<number>(0);
+  const [childAges, setChildAges] = useState<number[]>([]);
+  const [infantAges, setInfantAges] = useState<number[]>([]);
   const [isGuestsSelectorOpen, setIsGuestsSelectorOpen] = useState<boolean>(false);
   const guestsSelectorContainerRef = useRef<HTMLDivElement | null>(null);
   const [isHotelGuestsOpen, setIsHotelGuestsOpen] = useState<boolean>(false);
@@ -642,10 +648,20 @@ export default function HospedeClubApp() {
       customChildren?: number,
       propertyQuery?: string,
       hotelCode?: string | number,
-      customInfants?: number
+      customInfants?: number,
+      customChildAges?: number[],
+      customInfantAges?: number[]
     ) => {
-      if (hotelCode) currentResultsUrl.current = "";
       hotelbedsRequest.current?.abort();
+      const searchChildAges = resizeGuestAges(customChildAges ?? childAges, customChildren ?? childrenCount);
+      const searchInfantAges = resizeGuestAges(customInfantAges ?? infantAges, customInfants ?? infantsCount);
+      if (!validGuestAges(customChildren ?? childrenCount, customInfants ?? infantsCount, searchChildAges, searchInfantAges)) {
+        setHotelbedsError("Informe a idade de cada criança e confirme os hóspedes para atualizar as tarifas.");
+        setHotelbedsResult([]);
+        setIsHotelbedsLoading(false);
+        return;
+      }
+      if (hotelCode) currentResultsUrl.current = "";
       const controller = new AbortController();
       hotelbedsRequest.current = controller;
       const { signal } = controller;
@@ -668,6 +684,7 @@ export default function HospedeClubApp() {
             adults: String(customAdults ?? adultsCount),
             children: String(customChildren ?? childrenCount),
             infants: String(customInfants ?? infantsCount),
+            childAges: searchChildAges.join(","), infantAges: searchInfantAges.join(","),
           });
           if (propertyQuery) params.set("property", propertyQuery);
           if (hotelCode) params.set("hotelCodes", String(hotelCode));
@@ -699,7 +716,12 @@ export default function HospedeClubApp() {
         const perNight = (amount: number) => Math.round((amount / stayNights) * 100) / 100;
         const hotels: CuratedHotel[] = officialHotels.map((hotel) => {
           const gallery = photos(hotel.heroImage, hotel.gallery);
-          const { netRate, barRate } = hotel.hospedeClubPricing;
+          const cheapestRate = (hotel.rooms || []).flatMap((room: any) => room.rates || [])
+            .sort((a: any, b: any) => calculateVellutoPricing(a.net, a.sellingRate, 0.15, 0, 0,
+              a.hotelMandatory ? a.sellingRate : undefined).pix.pixPrice - calculateVellutoPricing(b.net, b.sellingRate, 0.15, 0, 0,
+              b.hotelMandatory ? b.sellingRate : undefined).pix.pixPrice)[0];
+          const netRate = cheapestRate?.net || hotel.hospedeClubPricing.netRate;
+          const barRate = cheapestRate?.sellingRate || hotel.hospedeClubPricing.barRate;
           const existingId = CURATED_HOTELS.find((item) => String(item.hotelbedsCode) === String(hotel.code))?.id;
           return {
             id: existingId || `hotelbeds-${hotel.code}`,
@@ -720,6 +742,7 @@ export default function HospedeClubApp() {
             reviewsCount: 0,
             heroImage: gallery[0] || "",
             gallery,
+            mandatorySellingRate: cheapestRate?.hotelMandatory ? perNight(cheapestRate.sellingRate) : undefined,
             netRate: perNight(netRate),
             barRate: perNight(barRate),
             omnibeesAvailableRooms: hotel.rooms?.[0]?.rates?.[0]?.allotted ?? 1,
@@ -732,27 +755,29 @@ export default function HospedeClubApp() {
             primaryLandmarkDistance: hotel.address || hotel.zoneName || "",
             landmarkDistances: [],
             curationHighlights: [hotel.description, ...(hotel.facilities || [])].filter(Boolean),
-            rooms: (hotel.rooms || []).filter((room: any) => room.rates?.length).map((room: any) => {
-              const rate = room.rates[0];
+            rooms: (hotel.rooms || []).flatMap((room: any) => (room.rates || []).map((rate: any, rateIndex: number) => {
               const roomPhotos = photos(room.heroImage, room.gallery);
               return {
-                id: `hb-rm-${hotel.code}-${room.code}`,
+                id: `hb-rm-${hotel.code}-${room.code}-${rateIndex}`,
                 hotelbedsRoomCode: room.code,
                 name: room.name || "Quarto",
                 sizeM2: 0,
                 viewLabel: "",
                 bedConfig: "",
+                mandatorySellingRate: rate.hotelMandatory ? perNight(rate.sellingRate) : undefined,
                 netRate: perNight(rate.net || netRate),
                 barRate: perNight(rate.sellingRate || barRate),
                 omnibeesAvailableCount: rate.allotted ?? 1,
                 minStay: 1,
                 boardBasis: rate.boardName || "",
-                highlights: [],
+                highlights: rate.promotions || [],
                 heroImage: roomPhotos[0],
                 gallery: roomPhotos,
-                rates: room.rates,
+                rates: [rate],
               };
-            }),
+            })).sort((a: RoomCategory, b: RoomCategory) =>
+              calculateVellutoPricing(a.netRate, a.barRate, 0.15, 0, 0, a.mandatorySellingRate).pix.pixPrice -
+              calculateVellutoPricing(b.netRate, b.barRate, 0.15, 0, 0, b.mandatorySellingRate).pix.pixPrice),
           };
         });
         if (successful.length < destinationCodes.length || successful.some((result) => result.contentIncomplete)) {
@@ -773,7 +798,7 @@ export default function HospedeClubApp() {
         }
       }
     },
-    [selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount, infantsCount]
+    [selectedCityId, checkInDate, checkOutDate, adultsCount, childrenCount, infantsCount, childAges, infantAges]
   );
 
   useEffect(() => () => hotelbedsRequest.current?.abort(), []);
@@ -828,7 +853,7 @@ export default function HospedeClubApp() {
     .map((hotel) => ({
       hotel,
       region: hotel.neighborhood.trim(),
-      pricing: calculateVellutoPricing(hotel.netRate, hotel.barRate, 0.15, hotel.cleaningFee, hotel.securityDeposit),
+      pricing: calculateVellutoPricing(hotel.netRate, hotel.barRate, 0.15, hotel.cleaningFee, hotel.securityDeposit, hotel.mandatorySellingRate),
     })), [hotelbedsResult, hotelSearchFilter]);
 
   const resultFilterOptions = useMemo(() => ({
@@ -907,9 +932,19 @@ export default function HospedeClubApp() {
     setAdultsCount(adults);
     setChildrenCount(children);
     setInfantsCount(infants);
+    setChildAges(resizeGuestAges(criteria.childAges, children));
+    setInfantAges(resizeGuestAges(criteria.infantAges, infants));
+    if (!validGuestAges(children, infants, criteria.childAges, criteria.infantAges)) {
+      hotelbedsRequest.current?.abort();
+      setIsHotelbedsLoading(false);
+      setHotelbedsResult([]);
+      setHotelbedsError("Informe a idade de cada criança e clique em Pesquisar.");
+      window.scrollTo(0, 0);
+      return;
+    }
     setHotelSearchFilter(exactCollection ? "" : hotelQuery);
     fetchLiveHotelbedsHotels(resolvedDestination || "RIO", resolvedCity, checkIn, checkOut, adults, children,
-      !exactCollection && !place && !collection && !rioNeighborhood ? query : undefined, undefined, infants);
+      !exactCollection && !place && !collection && !rioNeighborhood ? query : undefined, undefined, infants, criteria.childAges || [], criteria.infantAges || []);
     window.scrollTo(0, 0);
   };
 
@@ -917,6 +952,7 @@ export default function HospedeClubApp() {
     executeHotelbedsSearch({
       query, collectionId, checkIn: checkInDate, checkOut: checkOutDate,
       adults: adultsCount, children: childrenCount, infants: infantsCount,
+      childAges: resizeGuestAges(childAges, childrenCount), infantAges: resizeGuestAges(infantAges, infantsCount),
     });
   };
 
@@ -942,6 +978,8 @@ export default function HospedeClubApp() {
       adults: readCount("adultos", 2, 1, 8),
       children: readCount("criancas", 0, 0, 4),
       infants: readCount("bebes", 0, 0, 4),
+      childAges: params.get("idadesCriancas")?.split(",").map(Number) || [],
+      infantAges: params.get("idadesInfantis")?.split(",").map(Number) || [],
       collectionId: params.get("colecao") || undefined,
     };
     if (resultsUrl(criteria) === currentResultsUrl.current) {
@@ -1125,7 +1163,8 @@ export default function HospedeClubApp() {
       chosenRoom.barRate,
       0.15,
       hotel.cleaningFee || 0,
-      hotel.securityDeposit || 0
+      hotel.securityDeposit || 0,
+      chosenRoom.mandatorySellingRate
     );
     const extraFees = (hotel.cleaningFee || 0) + (hotel.securityDeposit || 0);
     syncCustomerActivityToBackend("CHECKOUT_INTENT", {
@@ -1169,7 +1208,8 @@ export default function HospedeClubApp() {
         selectedRoom.barRate,
         0.15,
         selectedHotel.cleaningFee || 0,
-        selectedHotel.securityDeposit || 0
+        selectedHotel.securityDeposit || 0,
+        selectedRoom.mandatorySellingRate
       ),
     [selectedRoom, selectedHotel]
   );
@@ -1223,7 +1263,8 @@ export default function HospedeClubApp() {
       const detail = extraGuestDetails[key];
       return {
         name: detail?.name || "", surname: detail?.surname || "",
-        age: minAge !== null && detail?.age !== undefined && detail.age !== "" ? Number(detail.age) : undefined,
+        age: minAge === null ? undefined : detail?.age !== undefined && detail.age !== "" ? Number(detail.age) :
+          key.startsWith("child-") ? childAges[Number(key.split("-")[1])] : infantAges[Number(key.split("-")[1])],
       };
     }),
   };
@@ -1818,8 +1859,8 @@ export default function HospedeClubApp() {
                             </span>
                             <button
                               type="button"
-                              disabled={childrenCount >= 6}
-                              onClick={() => setChildrenCount((prev) => Math.min(6, prev + 1))}
+                              disabled={childrenCount >= 4}
+                              onClick={() => setChildrenCount((prev) => Math.min(4, prev + 1))}
                               className="w-7 h-7 rounded-full border border-[#D8CBB8] text-[#182026] hover:bg-[#F3EDE2] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center font-bold text-sm cursor-pointer transition select-none"
                             >
                               +
@@ -1856,6 +1897,9 @@ export default function HospedeClubApp() {
                           </div>
                         </div>
 
+                        <GuestAgeFields childrenCount={childrenCount} infantsCount={infantsCount}
+                          childAges={resizeGuestAges(childAges, childrenCount)} infantAges={resizeGuestAges(infantAges, infantsCount)}
+                          onChange={(children, infants) => { setChildAges(children); setInfantAges(infants); }} />
                         {/* AÇÃO CONCLUIR */}
                         <div className="pt-2 border-t border-[#F0EAE0] flex items-center justify-between">
                           <span className="text-[11px] text-[#5C646B]">
@@ -2023,7 +2067,8 @@ export default function HospedeClubApp() {
                       hotel.barRate,
                       0.15,
                       hotel.cleaningFee || 0,
-                      hotel.securityDeposit || 0
+                      hotel.securityDeposit || 0,
+                      hotel.mandatorySellingRate
                     );
                     const isFav = favoriteIds.includes(hotel.id);
                     const isSoldOut = Boolean(hotel.stopSell || hotel.omnibeesAvailableRooms <= 0);
@@ -2501,8 +2546,7 @@ export default function HospedeClubApp() {
                             onClick={() => {
                               const nextC = Math.max(0, childrenCount - 1);
                               setChildrenCount(nextC);
-                              const hbDest = activeHotelbedsDestination.current;
-                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC, undefined, selectedHotel.hotelbedsCode);
+                              setHotelbedsResult([]);
                             }}
                             className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
                           >
@@ -2515,8 +2559,7 @@ export default function HospedeClubApp() {
                             onClick={() => {
                               const nextC = Math.min(4, childrenCount + 1);
                               setChildrenCount(nextC);
-                              const hbDest = activeHotelbedsDestination.current;
-                              fetchLiveHotelbedsHotels(hbDest, selectedCityId, checkInDate, checkOutDate, adultsCount, nextC, undefined, selectedHotel.hotelbedsCode);
+                              setHotelbedsResult([]);
                             }}
                             className="w-7 h-7 rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] text-[#182026] font-bold text-xs disabled:opacity-40"
                           >
@@ -2533,17 +2576,24 @@ export default function HospedeClubApp() {
                         <select value={infantsCount} onChange={(event) => {
                           const infants = Number(event.target.value);
                           setInfantsCount(infants);
-                          fetchLiveHotelbedsHotels(activeHotelbedsDestination.current, selectedCityId,
-                            checkInDate, checkOutDate, adultsCount, childrenCount, undefined, selectedHotel.hotelbedsCode, infants);
+                          setHotelbedsResult([]);
                         }} className="rounded-lg border border-[#D5C7B2] bg-[#FAF7F2] px-2 py-1 text-xs">
                           {[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}
                         </select>
                       </label>
 
+                      <GuestAgeFields childrenCount={childrenCount} infantsCount={infantsCount}
+                        childAges={resizeGuestAges(childAges, childrenCount)} infantAges={resizeGuestAges(infantAges, infantsCount)}
+                        onChange={(children, infants) => { setChildAges(children); setInfantAges(infants); setHotelbedsResult([]); }} />
                       <div className="pt-2 border-t border-[#F0EAE0]">
                         <button
                           type="button"
-                          onClick={() => setIsHotelGuestsOpen(false)}
+                          onClick={() => {
+                            if (!validGuestAges(childrenCount, infantsCount, resizeGuestAges(childAges, childrenCount), resizeGuestAges(infantAges, infantsCount))) return;
+                            setIsHotelGuestsOpen(false);
+                            fetchLiveHotelbedsHotels(activeHotelbedsDestination.current, selectedCityId, checkInDate, checkOutDate,
+                              adultsCount, childrenCount, undefined, selectedHotel.hotelbedsCode);
+                          }}
                           className="w-full py-1.5 rounded-lg bg-[#B8863B] text-white text-xs font-medium"
                         >
                           Confirmar
@@ -2667,7 +2717,8 @@ export default function HospedeClubApp() {
                 room.barRate,
                 0.15,
                 selectedHotel.cleaningFee || 0,
-                selectedHotel.securityDeposit || 0
+                selectedHotel.securityDeposit || 0,
+                room.mandatorySellingRate
               );
               const card12x = roomPricing.creditCard.installments[11];
               const roomSoldOut = room.omnibeesAvailableCount <= 0 || Boolean(selectedHotel.stopSell);
@@ -2719,7 +2770,7 @@ export default function HospedeClubApp() {
                       <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                         <span className="inline-flex items-center gap-1 font-medium bg-[#0F5257]/8 text-[#0F5257] px-2 py-0.5 rounded-md border border-[#0F5257]/15">
                           <CheckCircle2 className="w-3 h-3 text-[#0F5257] shrink-0" />
-                          <span>Taxas e ISS inclusos &bull; Sem surpresas no check-out</span>
+                          <span>Confira impostos e eventuais cobranças locais nas condições da tarifa</span>
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
@@ -3046,7 +3097,7 @@ export default function HospedeClubApp() {
                 <div className="rounded-2xl border border-[#E5DEC9] bg-white p-5 space-y-4">
                   <h2 className="font-editorial text-xl text-[#182026]">Demais hóspedes</h2>
                   {extraCheckoutGuests.map(({ key, label, minAge, maxAge }) => {
-                    const guest = extraGuestDetails[key] || { name: "", surname: "", age: "" };
+                    const guest = extraGuestDetails[key] || { name: "", surname: "", age: minAge === null ? "" : String((key.startsWith("child-") ? childAges : infantAges)[Number(key.split("-")[1])] ?? "") };
                     const update = (field: "name" | "surname" | "age", value: string) =>
                       setExtraGuestDetails((current) => ({ ...current, [key]: { ...guest, [field]: value } }));
                     return (
@@ -3356,7 +3407,7 @@ export default function HospedeClubApp() {
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedCancelPolicyText(getRoomCancellationInfo(selectedRoom).details);
+                          setSelectedCancelPolicyText(currentCheckoutQuote?.conditions?.cancellationPolicy?.lines.join("\n") || getRoomCancellationInfo(selectedRoom).details);
                           setLegalModalTab("termos");
                         }}
                         className="text-[#9A6D28] font-semibold underline hover:text-[#182026] cursor-pointer"
@@ -3367,7 +3418,7 @@ export default function HospedeClubApp() {
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedCancelPolicyText(getRoomCancellationInfo(selectedRoom).details);
+                          setSelectedCancelPolicyText(currentCheckoutQuote?.conditions?.cancellationPolicy?.lines.join("\n") || getRoomCancellationInfo(selectedRoom).details);
                           setLegalModalTab("cancelamento");
                         }}
                         className="text-[#9A6D28] font-semibold underline hover:text-[#182026] cursor-pointer"
@@ -3378,7 +3429,7 @@ export default function HospedeClubApp() {
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedCancelPolicyText(getRoomCancellationInfo(selectedRoom).details);
+                          setSelectedCancelPolicyText(currentCheckoutQuote?.conditions?.cancellationPolicy?.lines.join("\n") || getRoomCancellationInfo(selectedRoom).details);
                           setLegalModalTab("privacidade");
                         }}
                         className="text-[#9A6D28] font-semibold underline hover:text-[#182026] cursor-pointer"

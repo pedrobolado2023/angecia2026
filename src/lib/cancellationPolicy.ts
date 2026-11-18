@@ -2,7 +2,7 @@
  * HÓSPEDE CLUB — Motor Oficial de Políticas de Cancelamento e Alteração de Data
  * 
  * Regras Hóspede Club:
- * 1. Reservas para o mesmo dia ou dia seguinte (D-0 ou D-1) são AUTOMATICAMENTE NÃO REEMBOLSÁVEIS.
+ * 1. Condições específicas da tarifa têm prioridade sobre as regras próprias do clube.
  * 2. Se a Hotelbeds fornecer a política oficial daquele hotel/quarto (cancellationPolicies),
  *    utiliza-se a política oficial informada pela Hotelbeds.
  * 3. Caso a Hotelbeds NÃO disponibilize a política daquele hotel (ou em fallback de inventário próprio),
@@ -109,76 +109,29 @@ export function resolveRoomCancellationPolicy(
 ): ResolvedCancellationPolicy {
   const daysUntil = getDaysUntilCheckIn(checkInDateStr);
 
-  // REGRA ESPECIAL 1: Reservas para o mesmo dia (D-0) ou dia seguinte (D-1) -> AUTOMATICAMENTE NÃO REEMBOLSÁVEL
-  if (daysUntil <= 1) {
-    const isToday = daysUntil <= 0;
-    return {
-      isNonRefundable: true,
-      policyType: "IMMEDIATE_CHECKIN_NRF",
-      label: isToday ? "Não Reembolsável (Entrada Hoje)" : "Não Reembolsável (Entrada Amanhã)",
-      badgeClass: "bg-[#B83B2B]/10 text-[#B83B2B] border-[#B83B2B]/20",
-      shortSummary: "Reserva de última hora (mesmo dia ou dia seguinte) é não reembolsável.",
-      details:
-        "Atenção: Reservas efetuadas para o mesmo dia ou para o dia seguinte configuram-se automaticamente como Não Reembolsáveis. Em caso de cancelamento, alteração de datas ou no-show, será retida multa de 100% do valor total pago.",
-    };
-  }
-
   const rate = room?.rates?.[0];
-  const isNrfExplicit =
-    rate?.rateClass === "NRF" ||
-    /não reembolsável|non-refundable|nrf/i.test(room?.boardBasis || "") ||
-    /não reembolsável/i.test(room?.name || "");
-
-  // REGRA ESPECIAL 2: Tarifa NRF explícita da Hotelbeds ou Período Especial
-  if (isNrfExplicit) {
+  const official = hotelCancellationPolicy(rate?.supplierCancellationPolicies ?? rate?.cancellationPolicies,
+    rate?.originalCurrency || "BRL", rate?.rateClass);
+  if (official) {
+    const isNrf = rate?.rateClass === "NRF";
     return {
-      isNonRefundable: true,
-      policyType: "NRF_SPECIAL",
-      label: "Tarifa Promocional Não Reembolsável",
-      badgeClass: "bg-[#B83B2B]/10 text-[#B83B2B] border-[#B83B2B]/20",
-      shortSummary: "Tarifa com desconto agressivo de membro. Não permite cancelamento com reembolso.",
-      details:
-        "Esta acomodação possui tarifa promocional com desconto exclusivo de membro (ou período festivo especial). Em caso de cancelamento voluntário, alteração de datas ou no-show, não haverá reembolso do valor pago.",
+      isNonRefundable: isNrf,
+      policyType: "HOTELBEDS_OFFICIAL",
+      label: isNrf ? "Tarifa não reembolsável" : "Cancelamento conforme condições do hotel",
+      badgeClass: "bg-[#0F5257]/10 text-[#0F5257] border-[#0F5257]/20",
+      shortSummary: official.lines.join(" "),
+      details: official.lines.join("\n"),
     };
   }
-
-  // REGRA 3: Se a Hotelbeds fornecer política oficial com datas
-  const rawPolicies = rate?.cancellationPolicies;
-  if (Array.isArray(rawPolicies) && rawPolicies.length > 0) {
-    const firstCp = rawPolicies[0];
-    if (firstCp && firstCp.from) {
-      const deadlineStr = formatDateBR(firstCp.from);
-      const fromTime = new Date(firstCp.from).getTime();
-      const penaltyAmount = Number(firstCp.amount || 0);
-
-      // Se a data limite da Hotelbeds já estiver vencida em relação a agora
-      if (fromTime <= Date.now()) {
-        return {
-          isNonRefundable: true,
-          policyType: "HOTELBEDS_OFFICIAL",
-          label: "Tarifa Não Reembolsável (Prazo Expirado)",
-          badgeClass: "bg-[#B83B2B]/10 text-[#B83B2B] border-[#B83B2B]/20",
-          shortSummary: `O prazo limite de cancelamento sem custos encerrou em ${deadlineStr}.`,
-          details: `Política Hotelbeds: O prazo limite concedido pelo hotel para cancelamento gratuito encerrou em ${deadlineStr}. Cancelamentos agora incorrem em penalidade total da tarifa.`,
-        };
-      }
-
-      const penaltyText =
-        penaltyAmount > 0
-          ? `Após ${deadlineStr}, haverá taxa de cancelamento de R$ ${penaltyAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.`
-          : "Após esta data limite, incidirá a penalidade da política do hotel parceiro.";
-
-      return {
-        isNonRefundable: false,
-        policyType: "HOTELBEDS_OFFICIAL",
-        label: `Cancelamento Grátis até ${deadlineStr}`,
-        badgeClass: "bg-[#0F5257]/10 text-[#0F5257] border-[#0F5257]/20",
-        shortSummary: `Cancelamento gratuito com reembolso integral até ${deadlineStr}.`,
-        details: `Política Oficial do Hotel (Hotelbeds): Você pode cancelar gratuitamente com reembolso integral de 100% até o dia ${deadlineStr}. ${penaltyText}`,
-        freeCancellationUntilDate: deadlineStr,
-        hotelbedsPenaltyBRL: penaltyAmount,
-      };
-    }
+  // As regras próprias só se aplicam quando a tarifa não informa condições.
+  if (daysUntil <= 1) {
+    return {
+      isNonRefundable: true, policyType: "IMMEDIATE_CHECKIN_NRF",
+      label: "Não reembolsável — política Hóspede Club",
+      badgeClass: "bg-[#B83B2B]/10 text-[#B83B2B] border-[#B83B2B]/20",
+      shortSummary: HOSPEDE_CLUB_STANDARD_TERMS.immediateRule,
+      details: HOSPEDE_CLUB_STANDARD_TERMS.immediateRule,
+    };
   }
 
   // REGRA 4: Caso a Hotelbeds NÃO disponibilize a política daquele hotel, aplica-se a POLÍTICA DO HÓSPEDE CLUB

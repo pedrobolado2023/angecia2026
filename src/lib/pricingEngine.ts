@@ -207,4 +207,30 @@ export function calculateHospedePricing(
 }
 
 // Alias para compatibilidade
-export const calculateVellutoPricing = calculateHospedePricing;
+export function calculateVellutoPricing(net: number, bar?: number, markup = 0.15, cleaning = 0, deposit = 0,
+  mandatorySellingRate?: number): PricingCalculationResult {
+  const result = calculateHospedePricing(net, bar, markup, cleaning, deposit);
+  if (mandatorySellingRate === undefined) return result;
+  if (!Number.isFinite(mandatorySellingRate) || mandatorySellingRate < net) {
+    throw new Error("Não foi possível validar a tarifa de venda definida pelo hotel.");
+  }
+  const price = Math.round(mandatorySellingRate * 100) / 100;
+  return {
+    ...result, barRate: price, baseSellRate: price,
+    pix: { ...result.pix, grossAnchorRate: price, pixPrice: price, savingsVsBar: 0, savingsVsBarPercent: 0,
+      gatewayFeeAmount: price * PIX_GATEWAY_FEE, netProfitAmount: price * (1 - PIX_GATEWAY_FEE) - net,
+      netMarginOnNetPercent: ((price * (1 - PIX_GATEWAY_FEE) - net) / net) * 100,
+      perks: ["Tarifa definida pelo hotel"] },
+    creditCard: { baseCardPrice: price, installments: result.creditCard.installments.map((item) => ({
+      ...item, totalCharged: price, installmentValue: Math.round((price / item.installments) * 100) / 100,
+      gatewayFeeAmount: price * item.gatewayFeePercent / 100,
+      netProfitAmount: price * (1 - item.gatewayFeePercent / 100) - net,
+      netMarginOnNetPercent: ((price * (1 - item.gatewayFeePercent / 100) - net) / net) * 100,
+    })) },
+    parity: { isBelowBar: false, publicDisplayPrice: price, memberSecretPrice: price, memberSavingsAmount: 0, memberSavingsPercent: 0 },
+    audit: { ...result.audit, minGuaranteedMarginPercent: Math.min(
+      ((price * (1 - PIX_GATEWAY_FEE) - net) / net) * 100,
+      ...result.creditCard.installments.map((item) => ((price * (1 - item.gatewayFeePercent / 100) - net) / net) * 100)),
+    },
+  };
+}

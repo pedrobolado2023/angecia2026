@@ -58,6 +58,11 @@ export default function CancelamentoPage() {
                 <span>1. Política Oficial de Cancelamento e Alteração de Data</span>
               </h2>
 
+              <p className="rounded-xl border border-[#0F5257]/20 bg-[#0F5257]/5 p-4 text-[#0F5257]">
+                As condições específicas do hotel e da tarifa, apresentadas antes do pagamento e registradas no voucher,
+                têm prioridade, incluindo prazos, horários, moeda e valores de cada penalidade.
+                As regras próprias abaixo aplicam-se somente quando a tarifa não informa política de cancelamento.
+              </p>
               {/* Alerta de Reservas Imediatas */}
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 space-y-1.5">
                 <div className="flex items-center gap-2 font-semibold text-xs uppercase tracking-wider text-amber-900">

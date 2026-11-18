@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { GuestAgeFields } from "./GuestAgeFields";
+import { resizeGuestAges, validGuestAges } from "@/lib/guestAges";
 
 export type SearchCriteria = {
   query: string;
@@ -9,6 +11,8 @@ export type SearchCriteria = {
   adults: number;
   children: number;
   infants: number;
+  childAges?: number[];
+  infantAges?: number[];
   collectionId?: string;
 };
 
@@ -41,6 +45,10 @@ export function HotelSearchFilters({ criteria, earliestDate, onSearch }: {
           return;
         }
         setError("");
+        if (!validGuestAges(draft.children, draft.infants, draft.childAges, draft.infantAges)) {
+          setError("Informe a idade de cada criança na data de entrada.");
+          return;
+        }
         onSearch({ ...draft, query });
       }}>
       <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-3 lg:grid-cols-[2fr_1.2fr_1.2fr_repeat(3,minmax(0,0.9fr))_auto]">
@@ -66,7 +74,12 @@ export function HotelSearchFilters({ criteria, earliestDate, onSearch }: {
           <label key={key} className="block text-xs font-medium">
             {label}
             <select className={fieldClass} value={draft[key]}
-              onChange={(event) => setDraft({ ...draft, [key]: Number(event.target.value) })}>
+              onChange={(event) => {
+                const count = Number(event.target.value);
+                setDraft({ ...draft, [key]: count,
+                  ...(key === "children" ? { childAges: resizeGuestAges(draft.childAges, count) } : {}),
+                  ...(key === "infants" ? { infantAges: resizeGuestAges(draft.infantAges, count) } : {}) });
+              }}>
               {Array.from({ length: max - min + 1 }, (_, index) => index + min)
                 .map((count) => <option key={count} value={count}>{count}</option>)}
             </select>
@@ -76,6 +89,8 @@ export function HotelSearchFilters({ criteria, earliestDate, onSearch }: {
           Pesquisar
         </button>
       </div>
+      <GuestAgeFields childrenCount={draft.children} infantsCount={draft.infants} childAges={draft.childAges} infantAges={draft.infantAges}
+        onChange={(childAges, infantAges) => setDraft({ ...draft, childAges, infantAges })} />
       {error && <p role="alert" className="mt-2 text-sm text-[#B83B2B]">{error}</p>}
     </form>
   );
