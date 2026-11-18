@@ -2,10 +2,13 @@ export function translateHotelbedsRoomName(rawName: string): string {
   if (!rawName) return "Acomodação Selecionada";
   let name = rawName.trim();
 
-  // Limpa sufixos redundantes de parênteses se houver
-  name = name.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  // Preservar qualificadores do fornecedor (camas, vista etc.) dentro de parênteses.
+  name = name.replace(/\(\s*\)/g, " ").trim();
 
   const rules: [RegExp, string][] = [
+    [/\bACCESSIBILITY\b/gi, "Adaptado"],
+    [/\bWITH\s+BATH\b/gi, "com Banheira"],
+    [/\bBATH\b/gi, "Banheira"],
     [/\bQuarto\s+Individual\s+Beds\b/gi, "Camas de Solteiro"],
     [/\bQuarto\s+Individual\s+Bed\b/gi, "Cama de Solteiro"],
     [/\b(?:SINGLE|TWIN)\s+BEDS\b/gi, "Camas de Solteiro"],
@@ -48,6 +51,7 @@ export function translateHotelbedsRoomName(rawName: string): string {
     [/\bGARDEN\s+VIEW\b/gi, "Vista Jardim"],
     [/\bMOUNTAIN\s+VIEW\b/gi, "Vista Montanha"],
     [/\bOCEAN\s+FRONT\b/gi, "Frente Mar"],
+    [/\bOCEAN\b/gi, "Mar"],
     [/\bDOUBLE\b/gi, "Quarto Duplo"],
     [/\bTWIN\b/gi, "Quarto Twin"],
     [/\bSINGLE\b/gi, "Quarto Individual"],
@@ -69,5 +73,5 @@ export function translateHotelbedsRoomName(rawName: string): string {
     name = name.replace(pattern, replacement);
   }
 
-  return name.replace(/\s+/g, " ").trim();
+  return name.replace(/\bQuarto(?:\s+Quarto)+\b/gi, "Quarto").replace(/\s+/g, " ").trim();
 }

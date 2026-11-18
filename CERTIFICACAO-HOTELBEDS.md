@@ -20,7 +20,14 @@ comerciais à equipe de certificação, sem declarar cobertura de produtos não 
   na chave de cache e na oferta assinada. Links antigos com crianças solicitam as
   idades antes de consultar o fornecedor. Nenhuma idade representativa é presumida.
 - Uma opção selecionável por tarifa, conservando o código real do quarto e o token
-  individual. Tarifas de pacotes são excluídas antes do cálculo dos preços mínimos.
+  individual. A apresentação agrupa pelo código oficial do quarto e pelo regime de
+  alimentação: alternativas do mesmo regime ficam em um expansor, sem eliminar
+  contratos diferentes. Só rateKeys idênticas do mesmo quarto são deduplicadas.
+  Mostra total Pix da estadia, referência por noite, diferença para a menor oferta
+  daquele quarto e total/parcelamento no cartão. O máximo de outras ofertas não é
+  usado como suposta tarifa oficial riscada. Tarifas de pacotes são excluídas antes
+  do cálculo dos preços mínimos. Regimes mais completos podem ter preço menor por
+  condições comerciais do fornecedor; o sistema não altera valores para ordenar regimes.
 - Políticas específicas da tarifa prevalecem em cards, checkout e voucher. Todas as
   faixas de multa são preservadas, com moeda e data/hora/offset originais; o sistema
   não converte um prazo vencido em multa integral por conta própria.

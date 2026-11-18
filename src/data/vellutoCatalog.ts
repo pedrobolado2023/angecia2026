@@ -1,3 +1,5 @@
+import type { HotelbedsRate } from "../lib/hotelbeds";
+
 export interface LandmarkInfo {
   id: string;
   name: string;
@@ -24,6 +26,7 @@ export interface DestinationCity {
 }
 
 export interface RoomCategory {
+  rates?: HotelbedsRate[];
   mandatorySellingRate?: number;
   id: string;
   hotelbedsRoomCode?: string;

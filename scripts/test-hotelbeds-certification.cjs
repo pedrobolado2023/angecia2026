@@ -209,6 +209,37 @@ async function main() {
   assert.equal(routeSearches.length, 1);
   await GET(new NextRequest(`${query}&childAges=16&infantAges=0`));
   assert.equal(routeSearches.length, 2, "Cache de disponibilidade deve separar idades diferentes");
+  const { groupRoomOffers, priceRoomOffer } = load("src/lib/roomOffers.ts");
+  const { translateHotelbedsRoomName } = load("src/lib/hotelbedsRoomName.ts");
+  assert.equal(translateHotelbedsRoomName("Quarto TWIN LUXURY"), "Quarto Twin Luxo");
+  assert.equal(translateHotelbedsRoomName("Luxo ACCESSIBILITY"), "Luxo Adaptado");
+  assert(translateHotelbedsRoomName("DOUBLE STANDARD (BALCONY)").includes("(Varanda)"));
+  const makeRoom = (id, code, key, board, net) => ({ id, hotelbedsRoomCode: code, name: "Quarto de teste",
+    netRate: net / 3, barRate: net, mandatorySellingRate: undefined, omnibeesAvailableCount: 1,
+    boardBasis: board, highlights: [], sizeM2: 0, bedConfig: "", viewLabel: "", minStay: 1,
+    rates: [{ ...rawRate, rateKey: key, boardCode: board, net, sellingRate: undefined, supplierCancellationPolicies: policies }] });
+  const bb = makeRoom("bb", "DBL", "bb-key", "BB", 893);
+  const hb = makeRoom("hb", "DBL", "hb-key", "HB", 903.44);
+  const other = makeRoom("other", "DBL", "another-contract", "BB", 900);
+  const twin = makeRoom("twin", "TWN", "twin-key", "BB", 893);
+  const grouped = groupRoomOffers([bb, hb, { ...bb, id: "duplicate" }, other, twin], 3);
+  assert.equal(grouped.length, 2, "Duplo e Twin não podem ser unidos por nome/preço iguais");
+  const double = grouped.find((group) => group.id === "DBL");
+  assert.equal(double.meals.length, 2);
+  assert.equal(double.meals.find((meal) => meal.code === "BB").offers.length, 2);
+  assert.equal(double.meals.find((meal) => meal.code === "HB").offers[0], hb);
+  assert.equal(priceRoomOffer(bb, 3).pix.pixPrice, calculateVellutoPricing(893).pix.pixPrice);
+  assert.equal(priceRoomOffer(hb, 3).pix.pixPrice, calculateVellutoPricing(903.44).pix.pixPrice);
+  const cheaperHb = { ...hb, id: "promotion", rates: [{ ...hb.rates[0], net: 850 }] };
+  assert.equal(groupRoomOffers([bb, cheaperHb], 3)[0].meals[0].code, "HB", "Não inverter ou inflar preço do regime mais completo");
+  const { RoomOffers } = load("src/components/RoomOffers.tsx");
+  const offersMarkup = renderToStaticMarkup(React.createElement(RoomOffers, { rooms: [bb, hb, other], nights: 3,
+    checkIn: "2030-01-01", onSelect() {}, onViewPolicy() {} }));
+  assert.equal((offersMarkup.match(/<article /g) || []).length, 1);
+  assert(offersMarkup.includes("Café da manhã incluído") && offersMarkup.includes("Meia pensão"));
+  assert(offersMarkup.includes("Total de 3 noites") && offersMarkup.includes("Total no cartão"));
+  assert(offersMarkup.includes("Ver outras 1 tarifa"));
+  assert(!offersMarkup.includes("Tarifa Oficial"), "Não usar máximo de outras ofertas como referência de desconto do quarto");
   console.log("OK: idades, comodidades, cancelamento, preços obrigatórios, tarifas, oferta assinada, Pix/cartão, RECHECK e falha de condições.");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

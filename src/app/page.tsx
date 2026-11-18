@@ -24,6 +24,7 @@ import { GuestAgeFields } from "@/components/GuestAgeFields";
 import { resizeGuestAges, validGuestAges } from "@/lib/guestAges";
 import { HotelSearchFilters, type SearchCriteria } from "@/components/HotelSearchFilters";
 import { LuxuryImage } from "@/components/LuxuryImage";
+import { RoomOffers } from "@/components/RoomOffers";
 import { HotelOverview } from "@/components/HotelOverview";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
@@ -2645,133 +2646,13 @@ export default function HospedeClubApp() {
             {hotelbedsNotice && <p role="status" className="text-[#9A6D28]">{hotelbedsNotice}</p>}
             {!isHotelbedsLoading && !hotelbedsError && (!canBookSelectedHotel || !selectedHotel.rooms.length) &&
               <p>Nenhum quarto disponível para estas datas.</p>}
-            {canBookSelectedHotel && selectedHotel.rooms.map((room) => {
-              const cancelInfo = getRoomCancellationInfo(room);
-              const roomPricing = calculateVellutoPricing(
-                room.netRate,
-                room.barRate,
-                0.15,
-                selectedHotel.cleaningFee || 0,
-                selectedHotel.securityDeposit || 0,
-                room.mandatorySellingRate
-              );
-              const card12x = roomPricing.creditCard.installments[11];
-              const roomSoldOut = room.omnibeesAvailableCount <= 0 || Boolean(selectedHotel.stopSell);
-              const roomPhoto = room.heroImage || "";
+            {canBookSelectedHotel && <RoomOffers rooms={selectedHotel.rooms} nights={nightsCount} checkIn={checkInDate}
+              onSelect={(room) => handleDirectCheckout(selectedHotel, room)}
+              onViewPolicy={(room) => {
+                setSelectedCancelPolicyText(getRoomCancellationInfo(room).details);
+                setLegalModalTab("cancelamento");
+              }} />}
 
-              return (
-                <div
-                  key={room.id}
-                  className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E5DEC9] hover:border-[#B8863B] shadow-xs transition grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-center"
-                >
-                  {/* Foto Real da Acomodação */}
-                  <div className="lg:col-span-3 relative h-48 sm:h-52 lg:h-36 rounded-xl overflow-hidden bg-[#FAF7F2] border border-[#EAE3D5] shrink-0 group/rm">
-                    <LuxuryImage
-                      src={roomPhoto}
-                      alt={room.name}
-                      fallbackLabel={room.name}
-                      priority={false}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover/rm:scale-105"
-                    />
-                    <div className="absolute top-2 left-2 z-20 bg-[#182026]/85 backdrop-blur-xs px-2 py-0.5 rounded-md text-[10px] text-white font-medium">
-                      {room.sizeM2 > 0 ? `${room.sizeM2} m²` : null}
-                    </div>
-                  </div>
-
-                  {/* Informações da Suíte */}
-                  <div className="lg:col-span-4">
-                    <span className="text-[10px] sm:text-[11px] uppercase tracking-[0.14em] text-[#9A6D28] font-semibold block">
-                      {room.viewLabel}
-                    </span>
-                    <h3 className="font-editorial text-lg sm:text-xl font-normal text-[#182026] mt-0.5">
-                      {room.name}
-                    </h3>
-                    <p className="text-xs text-[#5C646B] mt-1">
-                      {[room.bedConfig, room.boardBasis].filter(Boolean).join(" • ")}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5 mt-2.5">
-                      {room.highlights.map((h, i) => (
-                        <span
-                          key={i}
-                          className="text-[10px] px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EAE3D5] text-[#465058]"
-                        >
-                          {h}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Selos de Taxas Inclusas e Política de Cancelamento */}
-                    <div className="mt-3 pt-2.5 border-t border-[#F0EAE0] space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                        <span className="inline-flex items-center gap-1 font-medium bg-[#0F5257]/8 text-[#0F5257] px-2 py-0.5 rounded-md border border-[#0F5257]/15">
-                          <CheckCircle2 className="w-3 h-3 text-[#0F5257] shrink-0" />
-                          <span>Confira impostos e eventuais cobranças locais nas condições da tarifa</span>
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                        <span className={`inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded-md border ${cancelInfo.badgeClass}`}>
-                          <RotateCcw className="w-3 h-3 shrink-0" />
-                          <span>{cancelInfo.label}</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedCancelPolicyText(cancelInfo.details);
-                            setLegalModalTab("cancelamento");
-                          }}
-                          className="text-[10px] text-[#9A6D28] underline hover:text-[#182026] cursor-pointer"
-                        >
-                          Ver regras
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tarifas */}
-                  <div className="lg:col-span-3 grid grid-cols-2 gap-2 p-3 rounded-xl bg-[#FAF7F2] border border-[#EAE3D5] tabular-price">
-                    <div className="border-r border-[#E2D9C8] pr-2">
-                      <span className="text-[9px] uppercase tracking-wider text-[#5C646B] block">
-                        Tarifa Oficial
-                      </span>
-                      <span className="text-sm sm:text-base text-[#B83B2B] line-through block mt-0.5">
-                        {formatBRL(roomPricing.barRate)}
-                      </span>
-                    </div>
-
-                    <div className="pl-1">
-                      <span className="text-[9px] uppercase tracking-wider text-[#9A6D28] font-medium block">
-                        Tarifa Membro
-                      </span>
-                      <span className="text-base sm:text-lg font-semibold text-[#0F5257] block mt-0.5">
-                        {formatBRL(roomPricing.pix.pixPrice)}
-                      </span>
-                      <span className="text-[10px] text-[#0F5257] font-medium block">
-                        -{formatBRL(roomPricing.pix.savingsVsBar)}/noite
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* CTA Selecionar */}
-                  <div className="lg:col-span-2 flex flex-col justify-center">
-                    <button
-                      disabled={roomSoldOut}
-                      onClick={() => handleDirectCheckout(selectedHotel, room)}
-                      className={`w-full min-h-[44px] py-2.5 px-3 rounded-xl font-medium text-xs uppercase tracking-[0.1em] transition flex items-center justify-center gap-1.5 ${
-                        roomSoldOut
-                          ? "bg-stone-200 text-stone-500 cursor-not-allowed"
-                          : "bg-[#B8863B] hover:bg-[#9A6D28] text-white shadow-xs cursor-pointer"
-                      }`}
-                    >
-                      <span>{roomSoldOut ? "Indisponível" : "Selecionar"}</span>
-                      {!roomSoldOut && <ChevronRight className="w-3.5 h-3.5" />}
-                    </button>
-                    <span className="text-[10px] text-center text-[#5C646B] mt-1 tabular-price block">
-                      ou 12x de {formatBRLCents(card12x.installmentValue)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </main>
       )}
