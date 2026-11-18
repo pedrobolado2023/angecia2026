@@ -3,18 +3,10 @@ import { getHotelbedsBookingDetail, cancelHotelbedsBooking } from "@/lib/hotelbe
 
 import { authenticatedCustomer } from "@/lib/customerSession";
 import { ownsHotelbedsBooking, saveHotelbedsReservationStatus } from "@/lib/postgres";
-import { getServerOmnibeesConfig } from "@/lib/serverEnv";
-import { timingSafeEqual } from "node:crypto";
+import { authenticatedAdmin, sameOriginAdminRequest } from "@/lib/adminSession";
 
 async function checkAccess(request: NextRequest, reference: string) {
-  const expected = getServerOmnibeesConfig().adminSessionSecret;
-  const adminCookie = request.cookies.get("hospede_admin_session")?.value ||
-    request.cookies.get("velluto_admin_session")?.value;
-  if (expected && adminCookie) {
-    const actual = Buffer.from(adminCookie);
-    const secret = Buffer.from(expected);
-    if (actual.length === secret.length && timingSafeEqual(actual, secret)) return null;
-  }
+  if (await authenticatedAdmin(request, { mutation: request.method === "DELETE" })) return null;
   const customer = await authenticatedCustomer(request);
   if (!customer) return NextResponse.json({ error: "Entre na sua conta." }, { status: 401 });
   try {
@@ -48,6 +40,7 @@ export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ reference: string }> }
 ) {
+  if (!sameOriginAdminRequest(request)) return NextResponse.json({ error: "Origem da solicitação inválida." }, { status: 403 });
   const { reference } = await context.params;
   if (!reference) {
     return NextResponse.json({ error: "Código de referência é obrigatório" }, { status: 400 });

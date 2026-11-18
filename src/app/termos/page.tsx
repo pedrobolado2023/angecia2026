@@ -63,6 +63,7 @@ export default function TermosPage() {
               <p>
                 Ao realizar um cadastro ou confirmar uma reserva através do site, o hóspede declara ciência e concordância integral com as condições comerciais aqui estipuladas.
               </p>
+              <p>O cadastro de membro é gratuito, sem mensalidade ou renovação automática. As hospedagens são contratadas e pagas separadamente, conforme a tarifa escolhida.</p>
             </section>
 
             <section className="space-y-2">

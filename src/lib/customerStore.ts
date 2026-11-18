@@ -1,3 +1,4 @@
+import { freeMembership } from "./membership";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -26,7 +27,7 @@ export interface CustomerVerification {
 }
 
 export interface CustomerMembership {
-  status: "TRIAL_ACTIVE" | "EXPIRED" | "ACTIVE_BY_BOOKING" | "SUBSCRIBED";
+  status: "MEMBER" | "TRIAL_ACTIVE" | "EXPIRED" | "ACTIVE_BY_BOOKING" | "SUBSCRIBED";
   trialStartedAt: string;
   trialExpiresAt: string;
   daysRemaining: number;
@@ -176,65 +177,10 @@ export function sanitizePhone(raw: string): string {
 }
 
 /**
- * Calcula o status real do Membro com base nos 7 dias de degustação (trial),
- * histórico de reservas pagas e plano mensal assinado.
+ * A conta de membro é gratuita para todos os clientes cadastrados.
  */
 export function computeMembershipStatus(customer: CustomerCRMRecord): CustomerMembership {
-  const now = Date.now();
-  const subPlan = customer.membership?.subscriptionPlan;
-
-  // 1. Assinatura ativa de R$ 19,90/mês
-  if (subPlan && subPlan.active) {
-    return {
-      status: "SUBSCRIBED",
-      trialStartedAt: customer.membership?.trialStartedAt || customer.createdAt,
-      trialExpiresAt: customer.membership?.trialExpiresAt || customer.createdAt,
-      daysRemaining: 30,
-      subscriptionPlan: subPlan,
-    };
-  }
-
-  // 2. Membro com reserva ativa nos últimos 45 dias
-  if (customer.bookings && customer.bookings.length > 0) {
-    const lastBooking = customer.bookings[0];
-    const bookingTime = new Date(lastBooking.createdAt).getTime();
-    if (now - bookingTime < 45 * 24 * 60 * 60 * 1000) {
-      return {
-        status: "ACTIVE_BY_BOOKING",
-        trialStartedAt: customer.membership?.trialStartedAt || customer.createdAt,
-        trialExpiresAt: customer.membership?.trialExpiresAt || customer.createdAt,
-        daysRemaining: Math.max(1, Math.ceil((bookingTime + 45 * 24 * 60 * 60 * 1000 - now) / (1000 * 60 * 60 * 24))),
-        subscriptionPlan: subPlan,
-      };
-    }
-  }
-
-  // 3. Degustação de 7 dias (Trial)
-  const trialExpiresTime = customer.membership?.trialExpiresAt
-    ? new Date(customer.membership.trialExpiresAt).getTime()
-    : new Date(customer.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000;
-
-  const diffMs = trialExpiresTime - now;
-
-  if (diffMs > 0) {
-    const daysRemaining = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    return {
-      status: "TRIAL_ACTIVE",
-      trialStartedAt: customer.membership?.trialStartedAt || customer.createdAt,
-      trialExpiresAt: new Date(trialExpiresTime).toISOString(),
-      daysRemaining,
-      subscriptionPlan: subPlan,
-    };
-  }
-
-  // 4. Período expirado
-  return {
-    status: "EXPIRED",
-    trialStartedAt: customer.membership?.trialStartedAt || customer.createdAt,
-    trialExpiresAt: new Date(trialExpiresTime).toISOString(),
-    daysRemaining: 0,
-    subscriptionPlan: subPlan,
-  };
+  return freeMembership(customer.createdAt);
 }
 
 const INITIAL_SEED_CUSTOMERS: CustomerCRMRecord[] = [
@@ -365,7 +311,7 @@ export function readCRMDatabase(): CRMDatabaseSchema {
     }
     if (!fs.existsSync(DB_FILE_PATH)) {
       const seedData: CRMDatabaseSchema = {
-        customers: INITIAL_SEED_CUSTOMERS,
+        customers: INITIAL_SEED_CUSTOMERS.map((customer) => ({ ...customer, membership: computeMembershipStatus(customer) })),
         campaigns: INITIAL_SEED_CAMPAIGNS,
         updatedAt: new Date().toISOString(),
       };
@@ -390,7 +336,7 @@ export function readCRMDatabase(): CRMDatabaseSchema {
     return parsed;
   } catch {
     return {
-      customers: INITIAL_SEED_CUSTOMERS,
+      customers: INITIAL_SEED_CUSTOMERS.map((customer) => ({ ...customer, membership: computeMembershipStatus(customer) })),
       campaigns: INITIAL_SEED_CAMPAIGNS,
       updatedAt: new Date().toISOString(),
     };
@@ -462,7 +408,6 @@ export function registerCustomerProfile(input: RegisterCustomerInput): {
 
   const verificationCode = generateVerificationCode();
   const codeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-  const trialExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   if (existing) {
     // Se o cliente já existia mas não tinha verificado o WhatsApp, atualizamos e geramos novo código
@@ -478,12 +423,7 @@ export function registerCustomerProfile(input: RegisterCustomerInput): {
         verified: false,
         attempts: 0,
       };
-      existing.membership = {
-        status: "TRIAL_ACTIVE",
-        trialStartedAt: now,
-        trialExpiresAt,
-        daysRemaining: 7,
-      };
+      existing.membership = freeMembership(now);
       existing.lastActiveAt = now;
       writeCRMDatabase(db);
       return { customer: existing, verificationCode };
@@ -510,12 +450,7 @@ export function registerCustomerProfile(input: RegisterCustomerInput): {
       verified: false,
       attempts: 0,
     },
-    membership: {
-      status: "TRIAL_ACTIVE",
-      trialStartedAt: now,
-      trialExpiresAt,
-      daysRemaining: 7,
-    },
+    membership: freeMembership(now),
     cityOrigin: `${input.address.city} (${input.address.state})`,
     preferredDestinations: ["Rio de Janeiro, Búzios & Angra", "Maceió & Maragogi"],
     travelProfile: "Casal",
@@ -688,39 +623,6 @@ export function getCustomerSessionProfile(customerId: string): CustomerCRMRecord
   return customer;
 }
 
-/**
- * Assinatura do Plano Hóspede Club R$ 19,90/mês
- */
-export function subscribeCustomerToClub(
-  customerId: string,
-  paymentMethod: "PIX" | "CARD"
-): CustomerCRMRecord {
-  const db = readCRMDatabase();
-  const customer = db.customers.find((c) => c.id === customerId);
-  if (!customer) throw new Error("Cliente não encontrado.");
-
-  const now = new Date();
-  const nextBilling = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-  customer.membership = {
-    status: "SUBSCRIBED",
-    trialStartedAt: customer.membership?.trialStartedAt || now.toISOString(),
-    trialExpiresAt: customer.membership?.trialExpiresAt || now.toISOString(),
-    daysRemaining: 30,
-    subscriptionPlan: {
-      active: true,
-      priceBRL: 19.9,
-      billingCycle: "monthly",
-      nextBillingAt: nextBilling,
-      paymentMethod,
-    },
-  };
-  customer.lastActiveAt = now.toISOString();
-
-  writeCRMDatabase(db);
-  return customer;
-}
-
 export function upsertCustomerProfile(input: {
   id?: string;
   fullName: string;
@@ -771,7 +673,6 @@ export function upsertCustomerProfile(input: {
     existing.campaignTags = computeCampaignTags(existing);
     existing.membership = computeMembershipStatus(existing);
   } else {
-    const trialExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const newCustomer: CustomerCRMRecord = {
       id: input.id || `MEM-${Math.floor(1000 + Math.random() * 9000)}`,
       fullName: input.fullName.trim() || "Membro Hóspede Club",
@@ -796,12 +697,7 @@ export function upsertCustomerProfile(input: {
         verified: true,
         attempts: 0,
       },
-      membership: {
-        status: "TRIAL_ACTIVE",
-        trialStartedAt: now,
-        trialExpiresAt,
-        daysRemaining: 7,
-      },
+      membership: freeMembership(now),
       favoriteHotelIds: input.favoriteHotelIds || [],
       favoriteHotelNames: input.favoriteHotelNames || [],
       searchHistory: [],

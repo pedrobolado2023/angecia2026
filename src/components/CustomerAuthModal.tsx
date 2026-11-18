@@ -34,7 +34,7 @@ export interface LoggedCustomer {
     state: string;
   };
   membership?: {
-    status: "TRIAL_ACTIVE" | "EXPIRED" | "ACTIVE_BY_BOOKING" | "SUBSCRIBED";
+    status: "MEMBER" | "TRIAL_ACTIVE" | "EXPIRED" | "ACTIVE_BY_BOOKING" | "SUBSCRIBED";
     trialStartedAt: string;
     trialExpiresAt: string;
     daysRemaining: number;
@@ -443,14 +443,14 @@ export function CustomerAuthModal({
               {activeTab === "verify"
                 ? "Validação de Segurança"
                 : activeTab === "register"
-                ? "Ativar 7 Dias de Membro VIP"
+                ? "Criar minha conta de membro"
                 : activeTab === "reset" ? "Recuperar senha" : "Entrar na sua Conta"}
             </h2>
             {activeTab !== "reset" && <p className="text-xs text-[#5C646B] mt-1">
               {activeTab === "verify"
                 ? "Confirme o código recebido no seu WhatsApp para liberar seu acesso."
                 : activeTab === "register"
-                ? "Preencha seus dados para ter 7 dias de degustação com tarifas de até 28% OFF."
+                ? "Cadastre-se gratuitamente para consultar suas reservas e acessar as tarifas de membro."
                 : "Acesse suas reservas, tarifas exclusivas e perfil de membro."}
             </p>}
           </div>
@@ -490,7 +490,7 @@ export function CustomerAuthModal({
                   : "border-transparent text-[#5C646B] hover:text-[#182026]"
               }`}
             >
-              Criar Cadastro VIP (7 Dias Grátis)
+              Criar conta gratuita
             </button>
             <button
               onClick={() => {
@@ -775,7 +775,7 @@ export function CustomerAuthModal({
             </div>
 
             <p className="text-[11px] text-center text-[#5C646B] mt-2">
-              Ao cadastrar, você ganha <strong>7 dias de acesso grátis</strong> às tarifas secretas de membro.
+              Sua conta de membro é <strong>gratuita, sem mensalidade</strong>.
             </p>
           </form>
         )}
@@ -792,7 +792,7 @@ export function CustomerAuthModal({
                 Digite o Código de 6 Dígitos
               </h3>
               <p className="text-xs text-[#5C646B] mt-1.5 max-w-sm mx-auto">
-                Enviamos um código via WhatsApp para confirmar seu número e ativar seus 7 dias de Membro VIP.
+                Enviamos um código via WhatsApp para confirmar seu número e ativar sua conta gratuita de membro.
               </p>
             </div>
 
@@ -848,7 +848,7 @@ export function CustomerAuthModal({
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Ativar Minha Conta de Membro VIP</span>
+                    <span>Ativar minha conta de membro</span>
                   </>
                 )}
               </button>
@@ -1013,7 +1013,7 @@ export function CustomerAuthModal({
                 }}
                 className="text-xs text-[#9A6D28] hover:underline cursor-pointer"
               >
-                Não tem cadastro? Crie sua conta e ganhe 7 dias de Membro VIP
+                Não tem cadastro? Crie sua conta gratuita de membro
               </button>
             </div>
           </form>

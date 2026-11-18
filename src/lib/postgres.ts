@@ -1,3 +1,4 @@
+import { freeMembership } from "./membership";
 /**
  * HÓSPEDE CLUB — Conexão com Banco de Dados PostgreSQL (Easypanel / Supabase / Neon / Render)
  * Salva com segurança:
@@ -105,7 +106,7 @@ export async function ensurePostgresTables(): Promise<boolean> {
       state VARCHAR(20),
       verification_code VARCHAR(10),
       verified BOOLEAN DEFAULT FALSE,
-      membership_status VARCHAR(50) DEFAULT 'TRIAL_ACTIVE',
+      membership_status VARCHAR(50) DEFAULT 'MEMBER',
       trial_expires_at TIMESTAMPTZ,
       password_hash VARCHAR(255),
       marketing_opt_in BOOLEAN DEFAULT TRUE,
@@ -123,7 +124,7 @@ export async function ensurePostgresTables(): Promise<boolean> {
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(20);
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_code VARCHAR(10);
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS membership_status VARCHAR(50) DEFAULT 'TRIAL_ACTIVE';
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS membership_status VARCHAR(50) DEFAULT 'MEMBER';
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
 
@@ -248,7 +249,7 @@ export async function saveCustomerToPostgres(
         : `MEM-${(customer.id || String(Date.now())).slice(-6).toUpperCase()}`;
       const code = verificationCode || customer.verification?.code || null;
       const isVerified = customer.verification?.verified || false;
-      const memStatus = customer.membership?.status || "TRIAL_ACTIVE";
+      const memStatus = customer.membership?.status || "MEMBER";
       const trialExp = customer.membership?.trialExpiresAt ? new Date(customer.membership.trialExpiresAt) : null;
 
       const addr = customer.address || {
@@ -320,16 +321,6 @@ export async function saveCustomerToPostgres(
  * Converte um registro do banco de dados PostgreSQL para a interface CustomerCRMRecord
  */
 export function mapPostgresRowToCustomer(row: any): CustomerCRMRecord {
-  const trialExpiresAt = row.trial_expires_at
-    ? new Date(row.trial_expires_at).toISOString()
-    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const now = Date.now();
-  const trialExpiresTime = new Date(trialExpiresAt).getTime();
-  const diffMs = trialExpiresTime - now;
-  const daysRemaining = diffMs > 0 ? Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24))) : 0;
-  const status: "TRIAL_ACTIVE" | "EXPIRED" =
-    diffMs > 0 ? ((row.membership_status as "TRIAL_ACTIVE" | "EXPIRED") || "TRIAL_ACTIVE") : "EXPIRED";
 
   return {
     id: row.member_code || String(row.id),
@@ -354,12 +345,7 @@ export function mapPostgresRowToCustomer(row: any): CustomerCRMRecord {
       verified: Boolean(row.verified),
       attempts: 0,
     },
-    membership: {
-      status,
-      trialStartedAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-      trialExpiresAt,
-      daysRemaining,
-    },
+    membership: freeMembership(row.created_at ? new Date(row.created_at).toISOString() : undefined),
     cityOrigin: row.city ? `${row.city} (${row.state || "BR"})` : "Brasil",
     preferredDestinations: ["Rio de Janeiro, Búzios & Angra", "Maceió & Maragogi"],
     travelProfile: "Casal",

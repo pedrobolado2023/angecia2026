@@ -332,7 +332,16 @@ export function AdminOmnibeesPanel({
   };
 
   const handleLogoutAdmin = async () => {
-    await fetch("/api/admin/auth", { method: "DELETE" });
+    try {
+      const response = await fetch("/api/admin/auth", { method: "DELETE" });
+      if (!response.ok) {
+        setAuthError("Não foi possível encerrar a sessão. Tente novamente.");
+        return;
+      }
+    } catch {
+      setAuthError("Não foi possível encerrar a sessão. Tente novamente.");
+      return;
+    }
     setIsAuthenticated(false);
     setMaskedEnv(null);
     onExitAdmin();
@@ -757,6 +766,7 @@ export function AdminOmnibeesPanel({
 
   return (
     <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-10 w-full">
+      {authError && <p role="alert" className="mb-4 text-sm text-[#B83B2B]">{authError}</p>}
       {/* CABEÇALHO DO PAINEL DE ADMINISTRADOR PROTEGIDO */}
       <div className="bg-white border border-[#E5DEC9] rounded-2xl p-6 sm:p-8 shadow-sm mb-8">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">

@@ -1,6 +1,6 @@
+import { authenticatedAdmin, adminHeaders } from "@/lib/adminSession";
 import { NextRequest, NextResponse } from "next/server";
 import { authenticatedCustomer } from "@/lib/customerSession";
-import { getServerOmnibeesConfig } from "@/lib/serverEnv";
 import {
   recordCustomerActivity,
   createCampaignBroadcast,
@@ -17,21 +17,10 @@ export async function POST(request: NextRequest) {
 
     // Criação de Campanha de Membros (exclusivo Admin autenticado)
     if (activityType === "CREATE_CAMPAIGN") {
-      const cfg = getServerOmnibeesConfig();
-      const cookieToken =
-        request.cookies.get("hospede_admin_session")?.value ||
-        request.cookies.get("velluto_admin_session")?.value;
-      const headerToken =
-        request.headers.get("x-hospede-admin-token") ||
-        request.headers.get("x-velluto-admin-token");
-      if (
-        !cfg.adminSessionSecret ||
-        (cookieToken !== cfg.adminSessionSecret &&
-          headerToken !== cfg.adminSessionSecret)
-      ) {
+      if (!(await authenticatedAdmin(request, { mutation: true, allowMachine: true }))) {
         return NextResponse.json(
           { ok: false, error: "Sessão administrativa necessária para criar campanhas." },
-          { status: 401 }
+          { status: 401, headers: adminHeaders }
         );
       }
 
@@ -48,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         campaign,
-      });
+      }, { headers: adminHeaders });
     }
 
     const customer = await authenticatedCustomer(request);

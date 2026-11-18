@@ -1,6 +1,6 @@
+import { authenticatedAdmin, adminHeaders } from "@/lib/adminSession";
 import { authenticatedCustomer } from "@/lib/customerSession";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerOmnibeesConfig } from "@/lib/serverEnv";
 import {
   readCRMDatabase,
   upsertCustomerProfile,
@@ -8,19 +8,7 @@ import {
 } from "@/lib/customerStore";
 
 export async function GET(request: NextRequest) {
-  const cfg = getServerOmnibeesConfig();
-  const cookieToken =
-    request.cookies.get("hospede_admin_session")?.value ||
-    request.cookies.get("velluto_admin_session")?.value;
-  const headerToken =
-    request.headers.get("x-hospede-admin-token") ||
-    request.headers.get("x-velluto-admin-token");
-
-  const isAuthenticated =
-    Boolean(cfg.adminSessionSecret) &&
-    (cookieToken === cfg.adminSessionSecret ||
-      headerToken === cfg.adminSessionSecret);
-
+  const isAuthenticated = await authenticatedAdmin(request, { allowMachine: true });
   if (!isAuthenticated) {
     return NextResponse.json(
       {
@@ -28,7 +16,7 @@ export async function GET(request: NextRequest) {
         error:
           "Acesso negado (HTTP 401). A base de clientes é protegida no Backend e exige sessão de Administrador autenticada.",
       },
-      { status: 401 }
+      { status: 401, headers: adminHeaders }
     );
   }
 
@@ -58,9 +46,11 @@ export async function GET(request: NextRequest) {
       totalBookingsCount,
       totalRevenueBRL,
     },
-    customers: db.customers,
+    customers: db.customers.map(({ passwordHash: _password, verification, ...customer }) => ({
+      ...customer, verification: { verified: Boolean(verification?.verified) },
+    })),
     campaigns: db.campaigns,
-  });
+  }, { headers: adminHeaders });
 }
 
 export async function POST(request: NextRequest) {

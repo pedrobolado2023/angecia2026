@@ -29,7 +29,6 @@ import { HotelOverview } from "@/components/HotelOverview";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
 import { CustomerBookings } from "@/components/CustomerBookings";
-import { MembershipRenewalModal } from "@/components/MembershipRenewalModal";
 import { LegalTermsModal, LegalModalTab } from "@/components/LegalTermsModal";
 import { BlackFridayModal } from "@/components/BlackFridayModal";
 import Link from "next/link";
@@ -201,7 +200,6 @@ export default function HospedeClubApp() {
     hotel: CuratedHotel;
     room: RoomCategory;
   } | null>(null);
-  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState<boolean>(false);
 
   const [selectedGeoOriginId, setSelectedGeoOriginId] = useState<"SP" | "GYN" | "BSB" | "RJ">("SP");
   const currentGeoProfile = useMemo(
@@ -483,7 +481,7 @@ export default function HospedeClubApp() {
         const customer = JSON.parse(cached);
         if (customer && customer.id && customer.email) {
           setLoggedCustomer(customer);
-          setIsClubMember(customer.membership?.status !== "EXPIRED");
+          setIsClubMember(true);
           setMemberName(customer.fullName);
           setMemberId(customer.id);
           if (customer.address?.city) {
@@ -512,7 +510,7 @@ export default function HospedeClubApp() {
           try {
             localStorage.setItem("hospede_customer_profile", JSON.stringify(data.customer));
           } catch {}
-          setIsClubMember(data.customer.membership?.status !== "EXPIRED");
+          setIsClubMember(true);
           setMemberName(data.customer.fullName);
           setMemberId(data.customer.id);
           if (data.customer.address?.city) {
@@ -543,7 +541,7 @@ export default function HospedeClubApp() {
     try {
       localStorage.setItem("hospede_customer_profile", JSON.stringify(customer));
     } catch {}
-    setIsClubMember(customer.membership?.status !== "EXPIRED");
+    setIsClubMember(true);
     setMemberName(customer.fullName);
     setMemberId(customer.id);
     if (customer.address?.city) {
@@ -1195,7 +1193,7 @@ export default function HospedeClubApp() {
     if (!loggedCustomer) {
       setPendingCheckoutSelection({ hotel, room: chosenRoom });
       setAuthModalCheckoutNotice(
-        `Para reservar com Tarifa de Membro no ${hotel.name}, faça login ou cadastre-se (com 7 dias VIP grátis).`
+        `Para reservar com Tarifa de Membro no ${hotel.name}, faça login ou cadastre-se (cadastro gratuito).`
       );
       setAuthModalInitialMode("register");
       setIsAuthModalOpen(true);
@@ -1461,16 +1459,7 @@ export default function HospedeClubApp() {
                   <Users className="w-3.5 h-3.5 text-[#B8863B]" />
                   <span>
                     Olá, {loggedCustomer.fullName.split(" ")[0]}
-                    {loggedCustomer.membership?.status === "TRIAL_ACTIVE" && (
-                      <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[#B8863B]/15 text-[#9A6D28] font-bold">
-                        VIP ({loggedCustomer.membership.daysRemaining}d)
-                      </span>
-                    )}
-                    {loggedCustomer.membership?.status === "EXPIRED" && (
-                      <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[#B83B2B]/15 text-[#B83B2B] font-bold">
-                        Trial Expirado
-                      </span>
-                    )}
+                    <span className="ml-1 rounded-full bg-[#B8863B]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#9A6D28]">Membro</span>
                   </span>
                 </button>
                 <button
@@ -1490,7 +1479,7 @@ export default function HospedeClubApp() {
                 className="text-[#9A6D28] hover:text-[#7A551E] font-medium cursor-pointer flex items-center gap-1"
               >
                 <Sparkles className="w-3 h-3 text-[#B8863B]" />
-                <span>Cadastrar Membro (7 Dias VIP Grátis)</span>
+                <span>Cadastrar Membro — Grátis</span>
               </button>
             )}
           </div>
@@ -1580,27 +1569,17 @@ export default function HospedeClubApp() {
             </button>
 
             {loggedCustomer ? (
-              loggedCustomer.membership?.status === "EXPIRED" ? (
-                <button
-                  onClick={() => setIsRenewalModalOpen(true)}
-                  className="px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer bg-[#B83B2B] text-white shadow-xs hover:bg-[#962E20]"
-                >
-                  <AlertCircle className="w-3 h-3 shrink-0" />
-                  <span className="hidden sm:inline">Renovar R$ 19,90/mês</span>
-                  <span className="sm:hidden">Renovar</span>
-                </button>
-              ) : (
+
                 <button
                   onClick={() => setShowClubModal(true)}
                   className="px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] tracking-wide flex items-center gap-1.5 transition cursor-pointer border bg-[#0F5257] border-[#0F5257] text-white shadow-xs"
                 >
                   <Unlock className="w-3 h-3 shrink-0 text-[#FFE599]" />
                   <span className="hidden sm:inline">
-                    Membro VIP ({loggedCustomer.membership?.daysRemaining || 7}d)
+                    Membro Hóspede Club
                   </span>
                   <span className="sm:hidden">Membro</span>
                 </button>
-              )
             ) : (
               <button
                 onClick={() => {
@@ -3537,6 +3516,7 @@ export default function HospedeClubApp() {
             <h3 className="font-editorial text-3xl font-normal text-[#182026]">
               Hóspede Club
             </h3>
+            <p className="mt-1.5 text-xs text-[#0F5257]">Sua conta de membro é gratuita, sem mensalidade.</p>
             {loggedCustomer ? <CustomerBookings key={loggedCustomer.id} /> : <p className="text-xs text-[#5C646B] mt-1.5 leading-relaxed">
               Cadastre seus dados e preferências de viagem para receber tarifas e campanhas de membro.
             </p>}
@@ -3834,30 +3814,6 @@ export default function HospedeClubApp() {
         initialMode={authModalInitialMode}
         checkoutContextNotice={authModalCheckoutNotice}
         onAuthSuccess={handleAuthSuccess}
-      />
-
-      {/* MODAL DE RENOVAÇÃO DE MEMBRO APÓS OS 7 DIAS (R$ 19,90/MÊS OU POR RESERVA) */}
-      <MembershipRenewalModal
-        isOpen={isRenewalModalOpen}
-        onClose={() => setIsRenewalModalOpen(false)}
-        customerName={loggedCustomer?.fullName || memberName}
-        onSubscribedSuccess={() => {
-          if (loggedCustomer) {
-            setLoggedCustomer({
-              ...loggedCustomer,
-              membership: {
-                status: "SUBSCRIBED",
-                trialStartedAt: loggedCustomer.membership?.trialStartedAt || new Date().toISOString(),
-                trialExpiresAt: loggedCustomer.membership?.trialExpiresAt || new Date().toISOString(),
-                daysRemaining: 30,
-              },
-            });
-            setIsClubMember(true);
-          }
-        }}
-        onBrowseHotels={() => {
-          handleOpenDestination(selectedCityId);
-        }}
       />
 
       {/* MODAL DE TERMOS, LGPD E POLÍTICAS DE CANCELAMENTO */}

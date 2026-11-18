@@ -42,7 +42,7 @@ export async function sendWhatsAppVerificationCode(params: {
   const messageText = params.purpose === "password-reset"
     ? `Hóspede Club | Recuperação de senha\n\nOlá, ${firstName}! Seu código para definir uma nova senha é *${params.code}*. Ele vale por 15 minutos e só pode ser usado uma vez. Se você não solicitou a troca, ignore esta mensagem.`
     :
-    `🌟 Hóspede Club | Ativação VIP\n\n` +
+    `🌟 Hóspede Club | Confirmação de cadastro\n\n` +
     `Olá, ${firstName}! 👋\n\n` +
     `Seu cadastro no Hóspede Club foi realizado com sucesso!\n\n` +
     `Para ativar sua conta e aproveitar todos os benefícios exclusivos, siga as instruções abaixo:\n\n` +

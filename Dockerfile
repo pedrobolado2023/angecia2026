@@ -27,6 +27,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/scripts/hotelbeds-catalog.mjs ./scripts/hotelbeds-catalog.mjs
+COPY --from=builder /app/scripts/check-postgres-security.mjs ./scripts/check-postgres-security.mjs
 
 USER nextjs
 

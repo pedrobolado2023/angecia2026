@@ -242,4 +242,5 @@ async function main() {
   assert(!offersMarkup.includes("Tarifa Oficial"), "Não usar máximo de outras ofertas como referência de desconto do quarto");
   console.log("OK: idades, comodidades, cancelamento, preços obrigatórios, tarifas, oferta assinada, Pix/cartão, RECHECK e falha de condições.");
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+module.exports = { loader };
+if (require.main === module) main().catch((error) => { console.error(error); process.exitCode = 1; });
