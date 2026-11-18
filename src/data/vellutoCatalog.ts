@@ -42,6 +42,8 @@ export interface RoomCategory {
 }
 
 export interface CuratedHotel {
+  hotelDescription?: string;
+  hotelFacilities?: string[];
   mandatorySellingRate?: number;
   id: string;
   name: string;

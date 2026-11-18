@@ -24,6 +24,7 @@ import { GuestAgeFields } from "@/components/GuestAgeFields";
 import { resizeGuestAges, validGuestAges } from "@/lib/guestAges";
 import { HotelSearchFilters, type SearchCriteria } from "@/components/HotelSearchFilters";
 import { LuxuryImage } from "@/components/LuxuryImage";
+import { HotelOverview } from "@/components/HotelOverview";
 import { AdminOmnibeesPanel } from "@/components/AdminOmnibeesPanel";
 import { CustomerAuthModal, LoggedCustomer } from "@/components/CustomerAuthModal";
 import { CustomerBookings } from "@/components/CustomerBookings";
@@ -755,6 +756,8 @@ export default function HospedeClubApp() {
             primaryLandmarkDistance: hotel.address || hotel.zoneName || "",
             landmarkDistances: [],
             curationHighlights: [hotel.description, ...(hotel.facilities || [])].filter(Boolean),
+            hotelDescription: hotel.description,
+            hotelFacilities: hotel.facilities || [],
             rooms: (hotel.rooms || []).flatMap((room: any) => (room.rates || []).map((rate: any, rateIndex: number) => {
               const roomPhotos = photos(room.heroImage, room.gallery);
               return {
@@ -2625,82 +2628,14 @@ export default function HospedeClubApp() {
 
           )}
 
-          {/* Galeria com Carrossel Compacto & Elegante */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 mb-8">
-            <div className="lg:col-span-8 relative h-52 sm:h-72 lg:h-80 rounded-2xl overflow-hidden bg-white border border-[#E5DEC9] shadow-sm">
-              <LuxuryImage
-                src={hotelAllPhotos[activePhotoIndex] || selectedHotel.heroImage}
-                alt={selectedHotel.name}
-                fallbackLabel={selectedHotel.name}
-                priority
-                className="w-full h-full"
-              />
-              <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 flex items-center justify-between z-20 pointer-events-none">
-                <button
-                  onClick={() =>
-                    setActivePhotoIndex((prev) =>
-                      prev === 0 ? hotelAllPhotos.length - 1 : prev - 1
-                    )
-                  }
-                  className="pointer-events-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
-                  disabled={hotelAllPhotos.length < 2}
-                  aria-label="Anterior"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() =>
-                    setActivePhotoIndex((prev) => (prev + 1) % hotelAllPhotos.length)
-                  }
-                  className="pointer-events-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 text-[#182026] hover:text-[#B8863B] shadow-md flex items-center justify-center cursor-pointer"
-                  disabled={hotelAllPhotos.length < 2}
-                  aria-label="Próxima"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="lg:col-span-4 flex flex-col justify-between gap-3">
-              <div className="grid grid-cols-4 lg:grid-cols-2 gap-2">
-                {hotelAllPhotos.slice(0, 4).map((imgUrl, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActivePhotoIndex(idx)}
-                    className={`relative h-14 sm:h-22 lg:h-28 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
-                      activePhotoIndex === idx
-                        ? "border-[#B8863B] shadow-sm"
-                        : "border-transparent opacity-75 hover:opacity-100"
-                    }`}
-                  >
-                    <LuxuryImage
-                      src={imgUrl}
-                      alt={`${selectedHotel.name} ${idx + 1}`}
-                      priority
-                      className="w-full h-full"
-                    />
-                  </button>
-                ))}
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white border border-[#E5DEC9] shadow-xs">
-                <span className="text-[10px] uppercase tracking-[0.2em] text-[#9A6D28] font-medium block mb-2.5">
-                  Destaques da Curadoria
-                </span>
-                <ul className="space-y-2 text-xs text-[#465058]">
-                  {selectedHotel.curationHighlights.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <Sparkles className="w-3.5 h-3.5 text-[#B8863B] shrink-0 mt-0.5" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
+          <HotelOverview key={selectedHotel.id}
+            name={selectedHotel.name} category={selectedHotel.subtitle}
+            photos={hotelAllPhotos} activePhoto={activePhotoIndex} onPhotoChange={setActivePhotoIndex}
+            description={selectedHotel.hotelDescription ?? (selectedHotel.hotelFacilities ? undefined : selectedHotel.curationHighlights[0])}
+            facilities={selectedHotel.hotelFacilities ?? selectedHotel.curationHighlights.slice(1)} />
 
           {/* Suítes & Comparador Claro */}
-          <div className="space-y-4">
+          <div id="quartos-disponiveis" className="scroll-mt-24 space-y-4">
             <h2 className="font-editorial text-2xl sm:text-3xl font-normal text-[#182026] mb-3 sm:mb-4">
               Suítes & Condições de Membro
             </h2>
